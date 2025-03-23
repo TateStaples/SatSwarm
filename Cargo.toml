@@ -19,3 +19,4 @@ crossbeam = "0.8"                                  # Concurrent data structures
 rayon = "1.8"                                      # Parallel iterators
 bitvec = "1.0"                                     # Efficient bit vectors
 parking_lot = "0.12"                               # Fast synchronization primitives
+petgraph = "0.6"                                   # Graph data structure library
