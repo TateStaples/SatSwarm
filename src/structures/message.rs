@@ -120,7 +120,7 @@ impl MessageQueue {
     pub fn new() -> Self {
         MessageQueue {
             clock: get_clock(),
-            last_clock_update: 0,
+            last_clock_update: *get_clock(),
             queue: CircularBuffer::new()
         }
     }

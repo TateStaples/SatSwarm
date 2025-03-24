@@ -66,6 +66,7 @@ pub struct SatSwarm {
     arena: Arena,
     clauses: ClauseTable,
     messages: MessageQueue,
+    start_time: u64,
     done: bool
 }
 impl SatSwarm {
@@ -74,7 +75,8 @@ impl SatSwarm {
             arena: Arena { nodes: Vec::new() },
             clauses: clause_table,
             messages: MessageQueue::new(),
-            done: false
+            done: false,
+            start_time: *get_clock()
         }
     }
 
@@ -97,7 +99,8 @@ impl SatSwarm {
             arena,
             clauses: clause_table,
             messages: MessageQueue::new(),
-            done: false
+            done: false,
+            start_time: *get_clock(),
         }
     }
 
@@ -110,6 +113,18 @@ impl SatSwarm {
     fn clock_update(&mut self) {
         SatSwarm::clock_tick();
         if DEBUG_PRINT {println!("Clock TICK:");}
+        // print clock every 100,000 cycles
+        if *get_clock() % 100_000 == 0 {
+            // print clock and late_update of all nodes
+            // for node in self.arena.nodes.iter() {
+            //     print!("Node {} @ {}, ", node.id, node.last_update );
+            // }
+            if *get_clock() - self.start_time > 10_000_000 {
+                self.done = true;
+                println!("Timeout after 10_000_000 cycles");
+            }
+            println!("Clock: {}", *get_clock());
+        }
         for (from, to, msg) in self.messages.pop_message() {
             if DEBUG_PRINT {println!("Message: {:?} from {:?} to {:?}", msg, from, to);}
             self.send_message(from, to, msg);
@@ -156,7 +171,8 @@ impl SatSwarm {
                 assert!(message == Message::Success, "Unexpected broadcast message");
                 match from {
                     MessageDestination::Neighbor(id) => {
-                        println!("Model: {:?}", self.recover_model(id));
+                        // print in sorted order of keys
+                        println!("Model: {:?}", self.recover_model(id).iter().collect::<Vec<_>>().into_iter().collect::<Vec<_>>());
                     },
                     _ => panic!("Broadcast message from unexpected source")
                 };
@@ -177,12 +193,15 @@ impl SatSwarm {
         for (i, state) in node.table.iter().enumerate() {
             for (j, term) in state.iter().enumerate() {
                 let clause = table[i][j];
-                let term = match term {
-                    TermState::False => false,
-                    TermState::True => true,
-                    TermState::Symbolic => panic!("Symbolic term in final model")
-                };
-                model.insert(clause.var, term == !clause.negated);
+                match term {
+                    TermState::True => {
+                        model.insert(clause.var, !clause.negated);
+                    },
+                    TermState::False => {
+                        model.insert(clause.var, clause.negated);
+                    },
+                    _ => {}     
+                }
             }
         }
         model
@@ -259,6 +278,7 @@ impl Node {
             },
             (NodeState::RecievingFork, Some(Message::Fork {cnf_state, assigned_vars})) => {
                 self.watchdog.check();
+                assert!(self.speculative_branches.is_empty(), "Node {} received fork while still processing", self.id);
                 self.table = cnf_state;
                 self.last_update = assigned_vars;
                 self.substitute(network, true, false);

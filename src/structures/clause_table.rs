@@ -19,9 +19,8 @@ pub struct Term {
 }
 pub struct ClauseTable {
     clause_table: Vec<[Term; CLAUSE_LENGTH]>, // 2D Vec to store the table of clauses
-
-    num_clauses: usize,           // Number of clauses in the table
-    clock: &'static u64,        // Reference to the global clock
+    // TODO: Shaan, I removed the clock because it was unused
+    pub num_clauses: usize,           // Number of clauses in the table
 
     query_buffer: VecDeque<Query>, // FIFO queue to hold incoming queries
     // Hey, Shaan just added in queries into the struct because it seemed simpler than having a separate hashmap
@@ -35,7 +34,6 @@ impl ClauseTable {
         Self {
             clause_table: vec![[Default::default(); CLAUSE_LENGTH]; num_clauses as usize], // Initialize the clause table with 0s
             num_clauses: num_clauses, // Initialize the number of clauses
-            clock: get_clock(), // Initialize the clock reference
             query_buffer: VecDeque::new(), // Initialize an empty FIFO queue
             inflight_queries: HashMap::new(), // Initialize an empty hashmap
         }
@@ -54,7 +52,7 @@ impl ClauseTable {
         -71  -49  46  0
          */
         let mut num_clauses = 0;
-        let mut SAT = true;
+        let sat = !file.to_string_lossy().to_lowercase().contains("unsat");
         let mut clauses = Vec::new();
         let mut var_count = 0;
         let file = std::fs::File::open(file).unwrap();
@@ -73,10 +71,10 @@ impl ClauseTable {
                 assert!(var_count < u8::MAX as i32, "Too many variables for u8");
                 num_clauses = parts.next().unwrap().parse().unwrap();
                 clauses = Vec::with_capacity(num_clauses);
-            } else if line.starts_with("c NOTE:"){
-                SAT = !line.contains("Not");
             } else if line.starts_with("c") {  // Skip comments
                 continue;
+            } else if line.starts_with("%") {  // end this file
+                break;
             } else {
                 let parts = line.split_whitespace();
                 for (term_index, part) in parts.enumerate() {
@@ -98,18 +96,24 @@ impl ClauseTable {
                 clauses.push(clause);
             }
         }
+        if num_clauses < 10 {
+            println!("Clauses: {:?}, expected_num_clauses: {}, expected_sat: {}, expected_vars: {}", clauses, num_clauses, sat, var_count);
+        }
         assert!(clauses.len() == num_clauses, "Number of clauses does not match header");
         clauses.push([Term{var: 0, negated: true}; CLAUSE_LENGTH]);  // Add a dummy clause to the end to make var 0 false
         assert!(clauses.iter().map(|c| c.iter().map(|t| t.var).max().unwrap()).max().unwrap() == var_count as u8, "Variable count does not match header");
         let s = Self {
             clause_table: clauses,
             num_clauses: num_clauses,
-            clock: get_clock(),
             query_buffer: VecDeque::new(),
             inflight_queries: HashMap::new(),
         };
 
-        (s, SAT)
+        (s, sat)
+    }
+    
+    pub fn number_of_vars(&self) -> usize {
+        self.clause_table.iter().map(|c| c.iter().map(|t| t.var).max().unwrap()).max().unwrap() as usize
     }
     // Updates the ClauseTable
     pub fn clock_update(&mut self, network: &mut MessageQueue) {
