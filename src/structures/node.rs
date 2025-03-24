@@ -11,6 +11,8 @@ Message types:
 */
 
 
+use core::panic;
+
 use super::clause_table::ClauseTable;
 
 pub type NodeId = usize;
@@ -236,8 +238,8 @@ impl SatSwarm {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TermResult {
-    Unassigned,
+pub enum TermUpdate {
+    Unchanged,
     True,
     False,
     Reset
@@ -250,7 +252,7 @@ pub enum Message {
     },
     Success,
     SubstitutionMask {
-        mask: [TermResult; CLAUSE_LENGTH],
+        mask: [TermUpdate; CLAUSE_LENGTH],
     },
     SubsitutionQuery {
         id: VarId,
@@ -362,14 +364,41 @@ impl Node {
         self.sat_flag = true;
     }
 
-    fn process_clause(&mut self, parent: &mut MessageQueue, mask: [TermResult; CLAUSE_LENGTH]) {
+    fn process_clause(&mut self, parent: &mut MessageQueue, mask: [TermUpdate; CLAUSE_LENGTH]) {
         // check if the clause is a tautology
-        if !self.check_tautology(mask) {
-            self.sat_flag = false;
+        let current_clause = &self.table[self.clause_index];
+        if !self.check_tautology(current_clause, &mask) {  // later optimizations mean we can fast forward through tautologies
+            // TODO: make sure sat_flag is set correctly
+            let mut current_clause = &mut self.table[self.clause_index];
 
             // assign the variable
+            let mut unsat = true;
+            let mut symbolic_count = 0; //  potentially useful for later optimizations (unit propagation)
+            for (term, result) in current_clause.iter_mut().zip(mask.iter()) {
+                symbolic_count += if *term == TermState::Symbolic {1} else {0};
+                match result {
+                    TermUpdate::True => { // true in clause makes the whole clause true
+                        *term = TermState::False;
+                        unsat = false;
+                    },
+                    TermUpdate::False => {
+                        *term = TermState::False;
+                    },
+                    TermUpdate::Reset => {
+                        *term = TermState::Symbolic;
+                        unsat = false;
+                    },
+                    TermUpdate::Unchanged => {
+                        unsat = false;
+                    }
+                }
+            }
 
             // check for UNSAT
+            if unsat {
+                self.unsat(parent);
+                return;
+            }
         }
 
         if self.clause_index == self.table.len() - 1 {
@@ -380,8 +409,8 @@ impl Node {
         assert!(self.clause_index < self.table.len(), "Node {} is reading past the end of the clause", self.id);
     }
 
-    fn check_tautology(&self, mask: [TermResult; CLAUSE_LENGTH]) -> bool {  // FIXME: this will race the reset subsitution query
-        return mask.iter().all(|t| *t == TermResult::False);
+    fn check_tautology(&self, current_clause: &ClauseState, mask: &[TermUpdate; CLAUSE_LENGTH]) -> bool {
+        return current_clause.iter().zip(mask).all(|(term, result)| *term == TermState::False || *result != TermUpdate::Reset);
     }
     
     fn end_processing(&mut self, parent: &mut MessageQueue) {
