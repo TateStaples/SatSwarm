@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::{collections::VecDeque, io::BufRead, path::PathBuf}; // Import VecDeque for FIFO queue
 
-use crate::{get_clock, GLOBAL_CLOCK};
+use crate::{get_clock, DEBUG_PRINT};
 
 use super::node::{CNFState, NodeId, TermState, VarId, CLAUSE_LENGTH}; // Import Network struct
 use super::message::{Message, MessageDestination, MessageQueue, TermUpdate}; // Import Message struct
@@ -12,35 +13,36 @@ struct Query {
     updates_left: usize,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
-struct Term {
-    var: VarId,
-    negated: bool,
+pub struct Term {
+    pub var: VarId,
+    pub negated: bool,
 }
 pub struct ClauseTable {
     clause_table: Vec<[Term; CLAUSE_LENGTH]>, // 2D Vec to store the table of clauses
 
     num_clauses: usize,           // Number of clauses in the table
-    clock: &'static u64,      // Reference to the global clock
+    clock: &'static u64,        // Reference to the global clock
 
     query_buffer: VecDeque<Query>, // FIFO queue to hold incoming queries
     // Hey, Shaan just added in queries into the struct because it seemed simpler than having a separate hashmap
-    inflight_queries: Vec<Query>, // hashmap query: VarId -> updates_left_to_process: u64
+    inflight_queries: HashMap<NodeId, Query>, // hashmap query: VarId -> updates_left_to_process: u64
 }
 
 impl ClauseTable {
     // Creates a new ClauseTable
-    pub fn dummy() -> Self {
+    pub fn _dummy() -> Self {
         let num_clauses = 10; // Number of clauses in the table
         Self {
             clause_table: vec![[Default::default(); CLAUSE_LENGTH]; num_clauses as usize], // Initialize the clause table with 0s
             num_clauses: num_clauses, // Initialize the number of clauses
             clock: get_clock(), // Initialize the clock reference
             query_buffer: VecDeque::new(), // Initialize an empty FIFO queue
-            inflight_queries: Vec::new(), // Initialize an empty hashmap
+            inflight_queries: HashMap::new(), // Initialize an empty hashmap
         }
     }
 
-    pub fn load_file(file: PathBuf) -> Self{
+    pub fn load_file(file: PathBuf) -> (Self, bool) {
+        // Load a file and return a new ClauseTable with expected SAT result
         /* Example File Format                                  (0 is the end of the clause)
         c
         c SAT instance in DIMACS CNF input format.
@@ -52,6 +54,7 @@ impl ClauseTable {
         -71  -49  46  0
          */
         let mut num_clauses = 0;
+        let mut SAT = true;
         let mut clauses = Vec::new();
         let mut var_count = 0;
         let file = std::fs::File::open(file).unwrap();
@@ -70,6 +73,8 @@ impl ClauseTable {
                 assert!(var_count < u8::MAX as i32, "Too many variables for u8");
                 num_clauses = parts.next().unwrap().parse().unwrap();
                 clauses = Vec::with_capacity(num_clauses);
+            } else if line.starts_with("c NOTE:"){
+                SAT = !line.contains("Not");
             } else if line.starts_with("c") {  // Skip comments
                 continue;
             } else {
@@ -79,27 +84,32 @@ impl ClauseTable {
                     let num: i32 = part.parse().unwrap();
                     if num == 0 {
                         clause_end = true;
-                        assert!(term_index == CLAUSE_LENGTH, "Only 3SAT is supported");
+                        assert!(term_index <= CLAUSE_LENGTH, "Only 3SAT is supported");
+                        for i in term_index..CLAUSE_LENGTH {
+                            clause[i] = Term{var: 0, negated: false};  // Var 0 is always false
+                        }
                     } else {
-                        assert!(num.abs()-1 < u8::MAX as i32, "Too many variables for u8");
-                        clause[term_index] = Term{var: (num.abs()-1) as u8, negated: num < 0};  // want to 0 index the variables
+                        assert!(num.abs() < u8::MAX as i32, "Too many variables for u8");
+                        clause[term_index] = Term{var: num.abs() as u8, negated: num < 0};  // want to 0 index the variables
                     }
                 }
             }
             if clause_end {
                 clauses.push(clause);
-                clause = [Term{var: 0, negated: false}; CLAUSE_LENGTH];
             }
         }
         assert!(clauses.len() == num_clauses, "Number of clauses does not match header");
-        assert!(clauses.iter().map(|c| c.iter().map(|t| t.var).max().unwrap()).max().unwrap() < var_count as u8, "Variable count does not match header");
-        Self {
+        clauses.push([Term{var: 0, negated: true}; CLAUSE_LENGTH]);  // Add a dummy clause to the end to make var 0 false
+        assert!(clauses.iter().map(|c| c.iter().map(|t| t.var).max().unwrap()).max().unwrap() == var_count as u8, "Variable count does not match header");
+        let s = Self {
             clause_table: clauses,
             num_clauses: num_clauses,
             clock: get_clock(),
             query_buffer: VecDeque::new(),
-            inflight_queries: Vec::new(),
-        }
+            inflight_queries: HashMap::new(),
+        };
+
+        (s, SAT)
     }
     // Updates the ClauseTable
     pub fn clock_update(&mut self, network: &mut MessageQueue) {
@@ -107,11 +117,17 @@ impl ClauseTable {
         // try to see if any new queries have been added to the query buffer
         if !self.query_buffer.is_empty() {
             let query = self.query_buffer.pop_front().unwrap(); // Get the first query from the queue
-            self.inflight_queries.push(query); // Add the query to the inflight queries
+            self.inflight_queries.insert(query.source, query); // Add the query to the inflight queries (we use HashMap to overwrite any existing queries to this core)  TODO: ask shaan if this is reasonable
         }
+        if DEBUG_PRINT {
+            println!("Inflight queries: {:?}", self.inflight_queries.iter().map(|(_, q)| (q.source, q.var, q.updates_left)).collect::<Vec<_>>());
+            println!("Query buffer: {:?}", self.query_buffer.iter().map(|q| (q.source, q.var)).collect::<Vec<_>>());
+        }
+        // remove queries that have been processed (0 updates left)
+        self.inflight_queries.retain(|_, query| query.updates_left > 0);
 
         // Iterate through the inflight queries, send appropriate messages to network
-        for query in self.inflight_queries.iter_mut() {
+        for (_, query) in self.inflight_queries.iter_mut() {
             
             let clause_to_check = self.num_clauses - query.updates_left; // Range = [0, num_clauses - 1]
 
@@ -147,9 +163,6 @@ impl ClauseTable {
             network.start_message(from, to, message);
             
         }
-
-        // remove queries that have been processed (0 updates left)
-        self.inflight_queries.retain(|query| query.updates_left > 0);
         
     }
 
@@ -166,6 +179,15 @@ impl ClauseTable {
                     }
                 );
             }
+            (MessageDestination::Neighbor(node_id), Message::SubstitutionAbort) => {
+                Query {
+                    source: node_id,
+                    var: 0,
+                    set: false,
+                    reset: false,
+                    updates_left: 0,  // updates_left = 0 means that the query will replace and immediately be removed
+                };
+            }
             _ => {
                 panic!("Invalid message type for ClauseTable");
             }
@@ -175,5 +197,9 @@ impl ClauseTable {
     pub fn get_blank_state(&self) -> CNFState {
         return vec![[TermState::Symbolic; 3]; self.num_clauses];
         // 0s in all terms for each clause
+    }
+
+    pub fn clone_table(&self) -> Vec<[Term; CLAUSE_LENGTH]> {
+        self.clause_table.clone()
     }
 }
