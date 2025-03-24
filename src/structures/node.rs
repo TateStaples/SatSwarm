@@ -12,74 +12,17 @@ Message types:
 
 
 use core::panic;
+use std::fmt::Debug;
 
-use super::clause_table::ClauseTable;
+use crate::{get_clock, GLOBAL_CLOCK};
+
+use super::{clause_table::ClauseTable, message::{Message, MessageDestination, MessageQueue, TermUpdate}};
 
 pub type NodeId = usize;
 pub type VarId = u8;
 pub type ClockCycle = u64;
 pub const CLAUSE_LENGTH: usize = 3;
 
-pub enum MessageDestination {
-    Neighbor(NodeId),
-    Broadcast, 
-    ClauseTable
-} 
-
-struct CircularBuffer<T, const N: usize> {
-    buffer: [Vec<T>; N],
-    head: usize,
-} impl<T, const N: usize> CircularBuffer<T, N> {
-    pub fn new() -> Self {
-        CircularBuffer {
-            buffer: std::array::from_fn::<Vec<T>, N, _>(|_| Vec::new()),
-            head: 0
-        }
-    }
-
-    pub fn push(&mut self, delay: usize, item: T) {
-        assert!(delay < N, "Delay too large");
-        assert!(delay > 0, "Delay too small");
-        self.buffer[self.head].push(item);
-    }
-
-    pub fn step(&mut self) {
-        self.head = (self.head + 1) % N;
-    }
-
-    pub fn pop(&mut self) -> Vec<T> {
-        let mut result = Vec::new();
-        std::mem::swap(&mut result, &mut self.buffer[self.head]);
-        result
-    }
-}
-pub struct MessageQueue {
-    clock: ClockCycle,
-    queue: CircularBuffer<(MessageDestination, MessageDestination, Message), 64>
-}
-impl MessageQueue {
-    pub fn new() -> Self {
-        MessageQueue {
-            clock: 0,
-            queue: CircularBuffer::new()
-        }
-    }
-
-    fn set_clock(&mut self, clock: ClockCycle) {
-        for _ in self.clock..clock {
-            self.queue.step();
-        }
-        self.clock = clock;
-    }
-
-    pub fn start_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
-        self.queue.push(1, (from, to, message));  // TODO: add more realis
-    }
-
-    pub fn pop_message(&mut self) -> Vec<(MessageDestination, MessageDestination, Message)> {
-        self.queue.pop()
-    }
-}
 struct Arena {
     nodes: Vec<Node>,
 } impl Arena {
@@ -117,10 +60,9 @@ struct Arena {
         n2.remove_neighbor(node_id);
     }
 }
-struct SatSwarm {
+pub struct SatSwarm {
     arena: Arena,
     clauses: ClauseTable,
-    clock: ClockCycle,
     messages: MessageQueue,
     done: bool
 }
@@ -129,15 +71,11 @@ impl SatSwarm {
         SatSwarm {
             arena: Arena { nodes: Vec::new() },
             clauses: clause_table,
-            clock: 0,
             messages: MessageQueue::new(),
             done: false
         }
     }
 
-    fn invariants(&self) {
-        assert!(self.messages.clock == self.clock);
-    }
     pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
         let blank_state = clause_table.get_blank_state();
@@ -156,17 +94,21 @@ impl SatSwarm {
         SatSwarm {
             arena,
             clauses: clause_table,
-            clock: 0,
             messages: MessageQueue::new(),
             done: false
         }
     }
 
-    pub fn clock_update(&mut self) {
-        self.clock += 1;
-        self.messages.set_clock(self.clock);
-
+    fn clock_tick() {
+        // separate function to make sure the clock is updated correctly (unsafe in multithreaded environments)
+        unsafe {
+            GLOBAL_CLOCK += 1;
+        }
+    }
+    fn clock_update(&mut self) {
+        SatSwarm::clock_tick();
         for (from, to, msg) in self.messages.pop_message() {
+            println!("{:?} received message {:?} from {:?}", to.clone(), msg.clone(), from.clone());
             match to {
                 MessageDestination::Neighbor(id) => {
                     self.arena.get_node_mut(id).recieve_message(from, msg);
@@ -199,22 +141,13 @@ impl SatSwarm {
         self.invariants();
     }
 
-    fn add_neighbor(&mut self, node_id: NodeId, neighbor_id: NodeId) {
-        let n1 = self.arena.get_node_mut(node_id);
-        n1.add_neighbor(neighbor_id);
-        
-        let n2 = self.arena.get_node_mut(neighbor_id);
-        n2.add_neighbor(node_id);
+    pub fn test_satisfiability(&mut self) -> bool {
+        self.arena.get_node_mut(0).activate();
+        while !self.done && self.arena.nodes.iter().any(|node| node.busy()) {
+            self.clock_update();
+        }
+        self.done
     }
-
-    fn remove_neighbor(&mut self, node_id: NodeId, neighbor_id: NodeId) {
-        let n1 = self.arena.get_node_mut(node_id);
-        n1.remove_neighbor(neighbor_id);
-
-        let n2 = self.arena.get_node_mut(neighbor_id);
-        n2.remove_neighbor(node_id);
-    }
-
     fn send_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
         match to {
             MessageDestination::Neighbor(id) => {
@@ -235,32 +168,12 @@ impl SatSwarm {
             }
         }
     }
+    fn invariants(&self) {
+        // TODO: possible add invariants here to check for correctness
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TermUpdate {
-    Unchanged,
-    True,
-    False,
-    Reset
-}
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Message {
-    Fork {
-        cnf_state: CNFState,  // CNF assignment buffer state
-        assigned_vars: VarId,   // List of already assigned variables (later work can make this more complex)
-    },
-    Success,
-    SubstitutionMask {
-        mask: [TermUpdate; CLAUSE_LENGTH],
-    },
-    SubsitutionQuery {
-        id: VarId,
-        assignment: bool,  // This seems useful so that when subsituting we can just check if the variable is True or False
-        reset: bool,  // whether to flag all subsequently assigned variables as unassigned
-    },
-}
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TermState {False, Symbolic} // True is not needed since the clause is satisfied when any term is true
 pub type ClauseState = [TermState; CLAUSE_LENGTH];
 pub type CNFState = Vec<ClauseState>;
@@ -281,9 +194,9 @@ pub struct Node {
     sat_flag: bool,
     state: NodeState, 
     speculative_branches: Vec<VarId>,
-    incoming_message: Option<Message>
+    incoming_message: Option<Message>,
+    watchdog: u8
 }
-
 impl Node {
     pub fn new(id: NodeId, table: CNFState) -> Self {
         Node {
@@ -295,7 +208,8 @@ impl Node {
             sat_flag: true,
             speculative_branches: Vec::new(),
             state: NodeState::AwaitingFork,  // make sure to start at false except for the first node so they don't repeat work
-            incoming_message: None
+            incoming_message: None,
+            watchdog: u8::MAX
         }
     }
 
@@ -308,6 +222,7 @@ impl Node {
     }
 
     pub fn busy(&self) -> bool {return self.state != NodeState::AwaitingFork}
+    pub fn activate(&mut self) {self.state = NodeState::Branching}
 
     pub fn clock_update(&mut self, free_neighbors: Vec<NodeId>, network: &mut MessageQueue) {
         // select var to assign
@@ -331,10 +246,15 @@ impl Node {
                 self.send_message(network, MessageDestination::ClauseTable, msg);
             },
             (NodeState::ProcessingClauses, Some(Message::SubstitutionMask {mask})) => {
+                self.watchdog = u8::MAX;
                 self.process_clause(network, mask);
             },
+            (NodeState::ProcessingClauses, None) => {
+                self.watchdog -= 1;
+                assert!(self.watchdog > 0, "Node {} has been processing for too long", self.id);
+            },
             (NodeState::AwaitingFork, _) => {}  // do nothing
-            _ => panic!("Node {} received unexpected message", self.id)
+            (_, m) => panic!("{:?} received unexpected message {:?}", self, m)
         }
     }
 
@@ -423,6 +343,7 @@ impl Node {
             self.last_update += 1;
         } 
     }
+    
     fn unsat(&mut self, parent: &mut MessageQueue) {
         if self.speculative_branches.is_empty() {
             self.state = NodeState::AwaitingFork;
@@ -475,4 +396,9 @@ impl Node {
     fn send_message(&self, network: &mut MessageQueue, dest: MessageDestination, message: Message) {
         network.start_message(MessageDestination::Neighbor(self.id), dest, message);
     }
+} impl Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Node id: {}, state: {:?}, neighbors: {:?}", self.id, self.state, self.neighbors)
+    }
+    
 }
