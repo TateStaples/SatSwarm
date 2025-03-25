@@ -1,9 +1,11 @@
+use core::{net, num};
 use std::collections::HashMap;
 use std::{collections::VecDeque, io::BufRead, path::PathBuf}; // Import VecDeque for FIFO queue
+use rand::Rng; // Import rand for random number generation
 
 use crate::{get_clock, DEBUG_PRINT};
 
-use super::node::{CNFState, NodeId, TermState, VarId, CLAUSE_LENGTH}; // Import Network struct
+use super::node::{CNFState, ClauseState, NodeId, TermState, VarId, CLAUSE_LENGTH}; // Import Network struct
 use super::message::{Message, MessageDestination, MessageQueue, TermUpdate}; // Import Message struct
 struct Query {
     source: NodeId,
@@ -18,9 +20,10 @@ pub struct Term {
     pub negated: bool,
 }
 pub struct ClauseTable {
-    clause_table: Vec<[Term; CLAUSE_LENGTH]>, // 2D Vec to store the table of clauses
+    pub clause_table: Vec<[Term; CLAUSE_LENGTH]>, // 2D Vec to store the table of clauses
     // TODO: Shaan, I removed the clock because it was unused
     pub num_clauses: usize,           // Number of clauses in the table
+    pub num_vars: usize,              // Number of variables in the table
 
     query_buffer: VecDeque<Query>, // FIFO queue to hold incoming queries
     // Hey, Shaan just added in queries into the struct because it seemed simpler than having a separate hashmap
@@ -36,6 +39,30 @@ impl ClauseTable {
             num_clauses: num_clauses, // Initialize the number of clauses
             query_buffer: VecDeque::new(), // Initialize an empty FIFO queue
             inflight_queries: HashMap::new(), // Initialize an empty hashmap
+            num_vars: 1,
+        }
+    }
+
+    pub fn random(num_clauses: usize, num_vars: u8) -> Self {
+        let mut clause_table = Vec::with_capacity(num_clauses);
+        for _ in 0..num_clauses {
+            let mut clause = [Term{var: 0, negated: false}; CLAUSE_LENGTH];
+            for i in 0..CLAUSE_LENGTH {
+                let var = rand::random::<u8>() % num_vars as u8;
+                let negated = rand::random::<bool>();
+                clause[i] = Term{var, negated};
+            }
+            clause_table.push(clause);
+        }
+        clause_table.push([Term{var: 0, negated: true}; CLAUSE_LENGTH]);  // Add a dummy clause to the end to make var 0 false
+        // clause_table.push([Term{var: 0, negated: false}; CLAUSE_LENGTH]);  // Add a dummy clause to the end to make var 0 true (contradiction)
+        let num_clauses = clause_table.len();
+        Self {
+            clause_table,
+            num_clauses,
+            num_vars: (num_vars as usize),
+            query_buffer: VecDeque::new(),
+            inflight_queries: HashMap::new(),
         }
     }
 
@@ -102,9 +129,11 @@ impl ClauseTable {
         assert!(clauses.len() == num_clauses, "Number of clauses does not match header");
         clauses.push([Term{var: 0, negated: true}; CLAUSE_LENGTH]);  // Add a dummy clause to the end to make var 0 false
         assert!(clauses.iter().map(|c| c.iter().map(|t| t.var).max().unwrap()).max().unwrap() == var_count as u8, "Variable count does not match header");
+        let num_clauses = clauses.len();
         let s = Self {
             clause_table: clauses,
             num_clauses: num_clauses,
+            num_vars: (var_count+1) as usize,
             query_buffer: VecDeque::new(),
             inflight_queries: HashMap::new(),
         };
@@ -121,7 +150,11 @@ impl ClauseTable {
         // try to see if any new queries have been added to the query buffer
         if !self.query_buffer.is_empty() {
             let query = self.query_buffer.pop_front().unwrap(); // Get the first query from the queue
-            self.inflight_queries.insert(query.source, query); // Add the query to the inflight queries (we use HashMap to overwrite any existing queries to this core)  TODO: ask shaan if this is reasonable
+            if query.var >= self.num_vars as u8 {
+                network.start_message(MessageDestination::ClauseTable, MessageDestination::Neighbor(query.source), Message::VariableNotFound);
+            } else {
+                self.inflight_queries.insert(query.source, query); // Add the query to the inflight queries (we use HashMap to overwrite any existing queries to this core)  TODO: ask shaan if this is reasonable
+            }
         }
         if DEBUG_PRINT {
             println!("Inflight queries: {:?}", self.inflight_queries.iter().map(|(_, q)| (q.source, q.var, q.updates_left)).collect::<Vec<_>>());
@@ -168,6 +201,10 @@ impl ClauseTable {
             
         }
         
+    }
+
+    fn send_message(&self, network: &mut MessageQueue, to: MessageDestination, message: Message) {
+        network.start_message(MessageDestination::ClauseTable, to, message);
     }
 
     pub fn recieve_message(&mut self, from: MessageDestination, message: Message) {

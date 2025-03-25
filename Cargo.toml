@@ -6,3 +6,4 @@ authors = ["SatSwarm Developer"]
 description = "Architectural simulation of a grid of DPLL SAT solver modules"
 
 [dependencies]
+rand = "0.9.0"

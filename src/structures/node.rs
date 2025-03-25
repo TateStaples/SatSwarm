@@ -119,9 +119,9 @@ impl SatSwarm {
             // for node in self.arena.nodes.iter() {
             //     print!("Node {} @ {}, ", node.id, node.last_update );
             // }
-            if *get_clock() - self.start_time > 10_000_000 {
+            if *get_clock() - self.start_time >= 50_000_000 {
                 self.done = true;
-                println!("Timeout after 10_000_000 cycles");
+                println!("Timeout after 50_000_000 cycles");
             }
             println!("Clock: {}", *get_clock());
         }
@@ -172,7 +172,53 @@ impl SatSwarm {
                 match from {
                     MessageDestination::Neighbor(id) => {
                         // print in sorted order of keys
-                        println!("Model: {:?}", self.recover_model(id).iter().collect::<Vec<_>>().into_iter().collect::<Vec<_>>());
+                        let node: &Node = self.arena.get_node(id);
+                        let model = self.recover_model(id);
+                        let mut labels: Vec<_> = model.clone().into_iter().collect();
+                        labels.sort_by_key(|&(var, _)| var);
+                        println!("Model: {:?}", labels);
+                        
+                        for (clause, clause_state) in self.clauses.clause_table.iter().zip(node.table.iter()) {
+                            let mut found_true = false;
+                            let mut clause_str = String::from("|\t");
+                            for (term, term_state) in clause.iter().zip(clause_state.iter()) {
+                                let term_str = match term {
+                                    clause_table::Term {var, negated} => {
+                                        let val = match model.get(var) {
+                                            Some(val) => val,
+                                            None => panic!("Variable {} not found in model", var)
+                                        };
+                                        let term_val = if *negated { !val } else { *val };
+                                        if term_val {
+                                            found_true = true;
+                                        }
+                                        match term_state {
+                                            TermState::True => {
+                                                assert!(term_val, "Term {:?} is not consistent with term state {:?}", term, term_state);
+                                            },
+                                            TermState::False => {
+                                                assert!(!term_val, "Term {:?} is not consistent with term state {:?}", term, term_state);
+                                            },
+                                            TermState::Symbolic => {
+                                            }
+                                            
+                                        }
+                                        // assert!(if term_val { *term_state == TermState::True } else { *term_state == TermState::False }, "{:?} is not consistent with term state {:?}", term, term_state);
+
+                                        if *negated {
+                                            format!("!{} ({})", var, !val)
+                                        } else {
+                                            format!("{} ({})", var, val)
+                                        }
+                                    }
+                                };
+                                clause_str.push_str(&term_str);
+                                clause_str.push_str("\t|\t");
+                            }
+                            println!("Clause: {}", clause_str);
+                            assert!(found_true, "Clause is not satisfied");
+                        }
+
                     },
                     _ => panic!("Broadcast message from unexpected source")
                 };
@@ -190,6 +236,7 @@ impl SatSwarm {
         let node = self.arena.get_node(id);
         let table = self.clauses.clone_table();
         let mut model = HashMap::new();
+        model.insert(0, false);  // first variable is always false
         for (i, state) in node.table.iter().enumerate() {
             for (j, term) in state.iter().enumerate() {
                 let clause = table[i][j];
@@ -200,7 +247,9 @@ impl SatSwarm {
                     TermState::False => {
                         model.insert(clause.var, clause.negated);
                     },
-                    _ => {}     
+                    _ => {
+                        model.insert(clause.var, false);
+                    }     
                 }
             }
         }
@@ -246,7 +295,7 @@ impl Node {
             speculative_branches: Vec::new(),
             state: NodeState::AwaitingFork,  // make sure to start at false except for the first node so they don't repeat work
             incoming_message: None,
-            watchdog: Watchdog::new(20),
+            watchdog: Watchdog::new(150),
         }
     }
 
@@ -262,13 +311,10 @@ impl Node {
     pub fn activate(&mut self) {self.state = NodeState::Branching}
 
     pub fn clock_update(&mut self, free_neighbors: Vec<NodeId>, network: &mut MessageQueue) {
-        // select var to assign
-        // memswap the incoming message out
         let msg = std::mem::replace(&mut self.incoming_message, None);
-        // println!("Node {} is processing in state {:?} with {:?} in the mailbox", self.id, self.state, msg);
         match (&self.state, msg) {
             (NodeState::Branching, null_msg) => {
-                assert!(!self.watchdog.check(), "Node {} has been processing for too long", self.id);
+                self.watchdog.check();
                 assert!(null_msg.is_none(), "Node {} received unexpected message", self.id);
                 if let Some(neighbor_id) = free_neighbors.first() {
                     self.partner_branch(network, *neighbor_id);
@@ -287,16 +333,18 @@ impl Node {
                 self.watchdog.check();
                 self.process_clause(network, mask);
             },
-            (NodeState::ProcessingClauses, None) => {
+            (NodeState::ProcessingClauses, Some(Message::VariableNotFound)) => {
+                self.watchdog.check();
+                assert!(self.clause_index == 0, "Node {} received VariableNotFound but not at the first clause", self.id);
+                self.unsat(network);
+            },
+            (NodeState::ProcessingClauses, None) => {  // Waiting the get the mask for the first clause
                 self.watchdog.peek();
+                assert!(self.clause_index == 0, "Node {} is waiting for mask but not at the first clause", self.id);
             },
             (NodeState::AbortingProcess, None) => { // This model assumes no possible gaps in network. Realistically, we should have a timeout or NACK
                 self.watchdog.check();
-                if self.speculative_branches.is_empty() {
-                    self.state = NodeState::AwaitingFork; 
-                } else {
-                    self.backtrack(network);
-                }
+                self.unsat(network);
             },
             (NodeState::AbortingProcess, Some(Message::SubstitutionMask{..})) => {  // round-trip cancellation hasn't propagated yet
                 self.watchdog.check();
@@ -341,43 +389,38 @@ impl Node {
     fn process_clause(&mut self, parent: &mut MessageQueue, mask: [TermUpdate; CLAUSE_LENGTH]) {
         // check if the clause is a tautology
         let current_clause = &self.table[self.clause_index];
-        if !self.check_tautology(current_clause, &mask) {  // later optimizations mean we can fast forward through tautologies
+        if !self.check_tautology(current_clause, &mask) || true {  // later optimizations mean we can fast forward through tautologies
             let mut current_clause = &mut self.table[self.clause_index];
 
             // assign the variable
             let mut unsat = true;
             let mut _symbolic_count = 0; //  potentially useful for later optimizations (unit propagation)
-            let mut clause_sat = false;
             for (term, result) in current_clause.iter_mut().zip(mask.iter()) {
                 _symbolic_count += if *term == TermState::Symbolic {1} else {0};
                 match result {
                     TermUpdate::True => { // true in clause makes the whole clause true
                         *term = TermState::True;
                         unsat = false;
-                        clause_sat = true;
                     },
                     TermUpdate::False => {
                         *term = TermState::False;
-                        self.sat_flag = false;
                     },
                     TermUpdate::Reset => {
                         *term = TermState::Symbolic;
                         unsat = false;
-                        self.sat_flag = false;
                     },
                     TermUpdate::Unchanged => {
-                        if term == &TermState::Symbolic {
+                        if term == &TermState::Symbolic || term == &TermState::True {
                             unsat = false;
                         }
                     }
                 }
             }
-            if !clause_sat {
+            if !current_clause.iter().any(|term| *term == TermState::True) {
                 self.sat_flag = false;
-            } 
-            
-            if unsat {
-                self.unsat(parent);
+            } else if unsat {
+                assert!(current_clause.iter().all(|term| *term == TermState::False), "Node {} has unsat clause that is not all false", self.id);
+                self.abort(parent);
                 return;
             }
         }
@@ -403,8 +446,16 @@ impl Node {
             self.state = NodeState::Branching;
         } 
     }
-    
+
     fn unsat(&mut self, network: &mut MessageQueue) {
+        if self.speculative_branches.is_empty() {
+            self.state = NodeState::AwaitingFork; 
+        } else {
+            self.backtrack(network);
+        }
+    }
+    
+    fn abort(&mut self, network: &mut MessageQueue) {
         self.state = NodeState::AbortingProcess;
         self.send_message(network, MessageDestination::ClauseTable, Message::SubstitutionAbort);
     }
@@ -419,6 +470,7 @@ impl Node {
 
     fn sat(&mut self, network: &mut MessageQueue) {
         println!("Node {} is SAT", self.id);
+        self.state = NodeState::AwaitingFork;
         self.send_message(network, MessageDestination::Broadcast, Message::Success);
     }
 

@@ -1,6 +1,7 @@
 use structures::{clause_table::ClauseTable, node::SatSwarm};
 
 mod structures;
+// TODO: i think there is an issue with aborted resets
 
 static mut GLOBAL_CLOCK: u64 = 0;
 pub fn get_clock() -> &'static u64 {
@@ -31,6 +32,7 @@ fn get_test_files() -> Option<Vec<std::path::PathBuf>> {
 
 pub const DEBUG_PRINT: bool = false;
 
+// TODO: implement multiple copies of the clause table so it doesn't bottleneck the networking
 fn main() {
     // load the first test file from ./tests (use OS to get the path)
     if let Some(files) = get_test_files() {
@@ -70,6 +72,21 @@ mod tests {
             }
         } else {
             println!("No tests directory found");
+        }
+    }
+
+    #[test]
+    fn random_smalls() {
+        for test in 0..10000 {
+            let table = ClauseTable::random(10, 3);
+            let mut simulation = SatSwarm::grid(table, 10, 10);
+            let (sat, cycles) = simulation.test_satisfiability();
+            if !sat {
+                println!("Satisfiable: {}, Cycles: {}", sat, cycles);
+            } else if test % 100 == 0 {
+                println!("{}/10000", test);
+            }
+
         }
     }
 }

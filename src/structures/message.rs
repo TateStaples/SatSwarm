@@ -26,6 +26,7 @@ pub enum Message {
         reset: bool,  // whether to flag all subsequently assigned variables as unassigned
     },
     SubstitutionAbort,
+    VariableNotFound,
 } impl Debug for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -43,6 +44,9 @@ pub enum Message {
             },
             Message::SubstitutionAbort => {
                 write!(f, "SubstitutionAbort")
+            }
+            Message::VariableNotFound => {
+                write!(f, "VariableNotFound")
             }
         }
     }
