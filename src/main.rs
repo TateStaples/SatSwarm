@@ -30,18 +30,14 @@ fn get_test_files() -> Option<Vec<std::path::PathBuf>> {
     Some(files)
 }
 
-pub const DEBUG_PRINT: bool = false;
-
-// TODO: implement multiple copies of the clause table so it doesn't bottleneck the networking
-fn main() {
-    // load the first test file from ./tests (use OS to get the path)
+fn run_files() {
     if let Some(files) = get_test_files() {
         for file in files.into_iter() {
             let f_copy = file.clone();
             let (clause_table, expected_result) = ClauseTable::load_file(file);
             // println!("Expected Result: {}, file: {:?}, num_terms: {}", expected_result, f_copy, clause_table.number_of_vars());
             // skip if the cluase table > 25 or expected result is unsat
-            if clause_table.number_of_vars() > 50 || expected_result {
+            if clause_table.num_vars > 50 || expected_result {
                 continue;
             }
             println!("Running test: {:?}", f_copy);
@@ -53,6 +49,22 @@ fn main() {
         println!("No tests directory found");
     }
     println!("Done");
+}
+pub const DEBUG_PRINT: bool = false;
+
+// TODO: implement multiple copies of the clause table so it doesn't bottleneck the networking
+fn main() {
+    run_random_tests();
+}
+
+fn run_random_tests() {
+    for test in 0..100 {
+        let table = ClauseTable::random(100, 20);
+        let mut simulation = SatSwarm::grid(table, 10, 10);
+        let (sat, cycles) = simulation.test_satisfiability();
+        println!("Satisfiable: {}, Cycles: {}", sat, cycles);
+        // println!("{}/10000", test);
+    }
 }
 
 #[cfg(test)]
@@ -86,6 +98,18 @@ mod tests {
             } else if test % 100 == 0 {
                 println!("{}/10000", test);
             }
+
+        }
+    }
+
+    #[test]
+    fn random_mediums() {
+        for test in 0..10000 {
+            let table = ClauseTable::random(20, 8);
+            let mut simulation = SatSwarm::grid(table, 10, 10);
+            let (sat, cycles) = simulation.test_satisfiability();
+            println!("Satisfiable: {}, Cycles: {}", sat, cycles);
+            println!("{}/10000", test);
 
         }
     }

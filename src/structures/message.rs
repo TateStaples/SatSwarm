@@ -2,31 +2,20 @@ use std::fmt::Debug;
 
 use crate::{get_clock, DEBUG_PRINT};
 
-use super::node::{CNFState, NodeId, VarId, CLAUSE_LENGTH};
+use super::{clause_table::ClauseTable, node::{NodeId, SpeculativeDepth, VarId}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MessageDestination {
     Neighbor(NodeId),
     Broadcast, 
-    ClauseTable
 } 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub enum Message {
     Fork {
-        cnf_state: CNFState,  // CNF assignment buffer state
-        assigned_vars: VarId,   // List of already assigned variables (later work can make this more complex)
+        table: ClauseTable,  // CNF assignment buffer state
+        assigned_vars: Vec<SpeculativeDepth>,   // List of already assigned variables (later work can make this more complex)
     },
     Success,
-    SubstitutionMask {
-        mask: [TermUpdate; CLAUSE_LENGTH],
-    },
-    SubsitutionQuery {
-        id: VarId,
-        assignment: bool,  // This seems useful so that when subsituting we can just check if the variable is True or False
-        reset: bool,  // whether to flag all subsequently assigned variables as unassigned
-    },
-    SubstitutionAbort,
-    VariableNotFound,
 } impl Debug for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -36,22 +25,10 @@ pub enum Message {
             Message::Success => {
                 write!(f, "Success")
             },
-            Message::SubstitutionMask {mask} => {
-                write!(f, "SubstitutionMask {{mask: {:?}}}", mask)
-            },
-            Message::SubsitutionQuery {id, assignment, reset} => {
-                write!(f, "SubsitutionQuery {{id: {}, assignment: {}, reset: {}}}", id, assignment, reset)
-            },
-            Message::SubstitutionAbort => {
-                write!(f, "SubstitutionAbort")
-            }
-            Message::VariableNotFound => {
-                write!(f, "VariableNotFound")
-            }
         }
     }
-    
 }
+
 pub struct Watchdog {
     last_update: u64,
     clock: &'static u64,
