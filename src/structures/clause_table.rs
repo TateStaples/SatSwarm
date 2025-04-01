@@ -24,6 +24,7 @@ pub struct ClauseTable {
     // TODO: Shaan, I removed the clock because it was unused
     pub num_clauses: usize,           // Number of clauses in the table
     pub num_vars: usize,              // Number of variables in the table
+    table_bandwidth: usize,          // Bandwidth of the table
 
     query_buffer: VecDeque<Query>, // FIFO queue to hold incoming queries
     // Hey, Shaan just added in queries into the struct because it seemed simpler than having a separate hashmap
@@ -40,6 +41,7 @@ impl ClauseTable {
             query_buffer: VecDeque::new(), // Initialize an empty FIFO queue
             inflight_queries: HashMap::new(), // Initialize an empty hashmap
             num_vars: 1,
+            table_bandwidth: 1,
         }
     }
 
@@ -63,6 +65,7 @@ impl ClauseTable {
             num_vars: (num_vars as usize),
             query_buffer: VecDeque::new(),
             inflight_queries: HashMap::new(),
+            table_bandwidth: 1,
         }
     }
 
@@ -136,11 +139,15 @@ impl ClauseTable {
             num_vars: (var_count+1) as usize,
             query_buffer: VecDeque::new(),
             inflight_queries: HashMap::new(),
+            table_bandwidth: 1,
         };
 
         (s, sat)
     }
     
+    pub fn set_bandwidth(&mut self, bandwidth: usize) {
+        self.table_bandwidth = bandwidth;
+    }
     pub fn number_of_vars(&self) -> usize {
         self.clause_table.iter().map(|c| c.iter().map(|t| t.var).max().unwrap()).max().unwrap() as usize
     }
@@ -148,7 +155,10 @@ impl ClauseTable {
     pub fn clock_update(&mut self, network: &mut MessageQueue) {
         
         // try to see if any new queries have been added to the query buffer
-        if !self.query_buffer.is_empty() {
+        for _ in 0..self.table_bandwidth {
+            if self.query_buffer.is_empty() {
+                break;
+            }
             let query = self.query_buffer.pop_front().unwrap(); // Get the first query from the queue
             if query.var >= self.num_vars as u8 {
                 network.start_message(MessageDestination::ClauseTable, MessageDestination::Neighbor(query.source), Message::VariableNotFound);
@@ -156,6 +166,7 @@ impl ClauseTable {
                 self.inflight_queries.insert(query.source, query); // Add the query to the inflight queries (we use HashMap to overwrite any existing queries to this core)  TODO: ask shaan if this is reasonable
             }
         }
+        
         if DEBUG_PRINT {
             println!("Inflight queries: {:?}", self.inflight_queries.iter().map(|(_, q)| (q.source, q.var, q.updates_left)).collect::<Vec<_>>());
             println!("Query buffer: {:?}", self.query_buffer.iter().map(|q| (q.source, q.var)).collect::<Vec<_>>());

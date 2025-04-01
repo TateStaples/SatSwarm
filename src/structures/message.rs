@@ -118,6 +118,7 @@ struct CircularBuffer<T, const N: usize> {
 pub struct MessageQueue {
     last_clock_update: u64,
     clock: &'static u64,
+    bandwidth: usize,
     queue: CircularBuffer<(MessageDestination, MessageDestination, Message), 64>
 }
 impl MessageQueue {
@@ -125,8 +126,13 @@ impl MessageQueue {
         MessageQueue {
             clock: get_clock(),
             last_clock_update: *get_clock(),
-            queue: CircularBuffer::new()
+            queue: CircularBuffer::new(),
+            bandwidth: 1_000,
         }
+    }
+
+    pub fn set_bandwidth(&mut self, bandwidth: usize) {
+        self.bandwidth = bandwidth;
     }
 
     fn check_clock(&mut self) {
@@ -141,7 +147,11 @@ impl MessageQueue {
         if DEBUG_PRINT {
             println!("Sending {:?} from {:?} to {:?}", message, from, to);
         }
-        self.queue.push(1, (from, to, message));  // TODO: add more realistic delays
+        let delay = match message {
+            // Message::Fork {..} => (std::mem::size_of::<CNFState>() + std::mem::size_of::<VarId>() - 1) / self.bandwidth + 1,
+            _ => 1,
+        };
+        self.queue.push(delay, (from, to, message));  // TODO: add more realistic delays
     }
 
     pub fn pop_message(&mut self) -> Vec<(MessageDestination, MessageDestination, Message)> {

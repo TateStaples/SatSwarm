@@ -67,30 +67,35 @@ pub struct SatSwarm {
     clauses: ClauseTable,
     messages: MessageQueue,
     start_time: u64,
-    done: bool
+    done: bool,
+    idle_cycles: u64,
+    busy_cycles: u64,
 }
 impl SatSwarm {
-    pub fn _blank(clause_table: ClauseTable) -> Self {
+    fn build(arena: Arena, clause_table: ClauseTable) -> Self {
         SatSwarm {
-            arena: Arena { nodes: Vec::new() },
+            arena,
             clauses: clause_table,
             messages: MessageQueue::new(),
             done: false,
-            start_time: *get_clock()
+            start_time: *get_clock(),
+            idle_cycles: 0,
+            busy_cycles: 0,
         }
     }
 
-    pub fn generate(num_nodes: usize, top: Topology) -> Self {
-        let mut arena = Arena { nodes: Vec::with_capacity(num_nodes) };
-        let blank_state = ClauseTable::get_blank_state(&ClauseTable::_dummy());
-        for id in 0..num_nodes {
-            arena.nodes.push(Node::new(id, blank_state.clone()));
-        }
-        match top {
-            Topology::Grid(rows, cols) => SatSwarm::grid(ClauseTable::_dummy(), rows, cols),
-            Topology::Torus(rows, cols) => SatSwarm::torus(ClauseTable::_dummy(), rows, cols),
-            Topology::Dense(num_nodes) => SatSwarm::dense(ClauseTable::_dummy(), num_nodes),
-        }
+    pub fn _blank(clause_table: ClauseTable) -> Self {
+        SatSwarm::build(Arena { nodes: Vec::new() }, clause_table)
+    }
+    pub fn generate(clause_table: ClauseTable, config: &TestConfig) -> Self {
+        let mut swarm = match config.topology {
+            Topology::Grid(rows, cols) => SatSwarm::grid(clause_table, rows, cols),
+            Topology::Torus(rows, cols) => SatSwarm::torus(clause_table, rows, cols),
+            Topology::Dense(num_nodes) => SatSwarm::dense(clause_table, num_nodes),
+        };
+        swarm.clauses.set_bandwidth(config.table_bandwidth);
+        swarm.messages.set_bandwidth(config.node_bandwidth);
+        swarm
     }
     pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
@@ -107,13 +112,7 @@ impl SatSwarm {
                 }
             }
         }
-        SatSwarm {
-            arena,
-            clauses: clause_table,
-            messages: MessageQueue::new(),
-            done: false,
-            start_time: *get_clock(),
-        }
+        SatSwarm::build(arena, clause_table)
     }
 
     pub fn torus(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
@@ -137,13 +136,7 @@ impl SatSwarm {
                 }
             }
         }
-        SatSwarm {
-            arena,
-            clauses: clause_table,
-            messages: MessageQueue::new(),
-            done: false,
-            start_time: *get_clock(),
-        }
+        SatSwarm::build(arena, clause_table)
     }
 
     pub fn dense(clause_table: ClauseTable, num_nodes: usize) -> Self {
@@ -157,13 +150,7 @@ impl SatSwarm {
                 arena.add_neighbor(i, j);
             }
         }
-        SatSwarm {
-            arena,
-            clauses: clause_table,
-            messages: MessageQueue::new(),
-            done: false,
-            start_time: *get_clock(),
-        }
+        SatSwarm::build(arena, clause_table)
     }
 
     fn clock_tick() {
@@ -206,7 +193,16 @@ impl SatSwarm {
 
         // Then, apply the updates
         for (node_id, free_neighbors) in updates {
+            let free_neighbors: Vec<NodeId> = free_neighbors.iter()
+                .filter(|&&n| !self.arena.get_node(n).busy())
+                .copied()
+                .collect();
             let node = self.arena.get_node_mut(node_id);
+            if node.busy() {
+                self.busy_cycles += 1;
+            } else {
+                self.idle_cycles += 1;
+            }
             node.clock_update(free_neighbors, &mut self.messages);
         }
         self.invariants();
@@ -222,17 +218,9 @@ impl SatSwarm {
         let time = end - start;
         TestResult {
             simulated_result: self.done,
-            expected_result: true, // This should be passed in from the caller
             simulated_cycles: time,
-            config: TestConfig {
-                num_nodes: self.arena.nodes.len() as i32,
-                table_bandwidth: 1,
-                topology: Topology::Grid(10, 10), // This should be passed in from the caller
-                node_bandwidth: 600,
-            },
-            testcase: "test".to_string(), // This should be passed in from the caller
-            cycles_busy: time,
-            cycles_idle: 0,
+            cycles_busy: self.busy_cycles,
+            cycles_idle: self.idle_cycles,
         }
     }
     fn send_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {

@@ -1,0 +1,3 @@
+Test Path,Expected Result,Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
+tests/unsat/dummy_unsat.cnf,true,false,20,66,1934,100,1,"Grid(10, 10)",1000000
+tests/sat/uf20-0778.cnf,true,true,625323,33519159,29013141,100,1,"Grid(10, 10)",1000000
