@@ -1,5 +1,5 @@
 [package]
-name = "satswarm"
+name = "sat_swarm"
 version = "0.1.0"
 edition = "2021"
 authors = ["SatSwarm Developer"]
@@ -7,3 +7,5 @@ description = "Architectural simulation of a grid of DPLL SAT solver modules"
 
 [dependencies]
 rand = "0.9.0"
+rustsat = "0.6.6"
+rustsat-minisat = "0.4.6"

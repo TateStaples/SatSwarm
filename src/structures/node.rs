@@ -16,7 +16,7 @@ Message types:
 use core::panic;
 use std::{collections::HashMap, fmt::Debug};
 
-use crate::{get_clock, DEBUG_PRINT, GLOBAL_CLOCK};
+use crate::{get_clock, TestResult, Topology, DEBUG_PRINT, GLOBAL_CLOCK};
 
 use super::{clause_table::{self, ClauseTable}, message::{Message, MessageDestination, MessageQueue, TermUpdate, Watchdog}};
 
@@ -80,6 +80,18 @@ impl SatSwarm {
         }
     }
 
+    pub fn generate(num_nodes: usize, top: Topology) -> Self {
+        let mut arena = Arena { nodes: Vec::with_capacity(num_nodes) };
+        let blank_state = ClauseTable::get_blank_state();
+        for id in 0..num_nodes {
+            arena.nodes.push(Node::new(id, blank_state.clone()));
+        }
+        match top {
+            Topology::Grid(rows, cols) => SatSwarm::grid(arena, rows, cols),
+            Topology::Torus(rows, cols) => SatSwarm::torus(arena, rows, cols),
+            Topology::Dense(num_nodes) => SatSwarm::dense(arena, num_nodes),
+        }
+    }
     pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
         let blank_state = clause_table.get_blank_state();
@@ -93,6 +105,56 @@ impl SatSwarm {
                 if j > 0 {
                     arena.add_neighbor(id, id - 1);
                 }
+            }
+        }
+        SatSwarm {
+            arena,
+            clauses: clause_table,
+            messages: MessageQueue::new(),
+            done: false,
+            start_time: *get_clock(),
+        }
+    }
+
+    pub fn torus(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
+        let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
+        let blank_state = clause_table.get_blank_state();
+        for i in 0..rows {
+            for j in 0..cols {
+                let id = arena.nodes.len();
+                arena.nodes.push(Node::new(id, blank_state.clone()));
+                // Connect to the node above (wrap around for torus)
+                if i > 0 {
+                    arena.add_neighbor(id, id - cols);
+                } else {
+                    arena.add_neighbor(id, id + (rows - 1) * cols);
+                }
+                // Connect to the node to the left (wrap around for torus)
+                if j > 0 {
+                    arena.add_neighbor(id, id - 1);
+                } else {
+                    arena.add_neighbor(id, id + cols - 1);
+                }
+            }
+        }
+        SatSwarm {
+            arena,
+            clauses: clause_table,
+            messages: MessageQueue::new(),
+            done: false,
+            start_time: *get_clock(),
+        }
+    }
+
+    pub fn dense(clause_table: ClauseTable, num_nodes: usize) -> Self {
+        let mut arena = Arena { nodes: Vec::with_capacity(num_nodes) };
+        let blank_state = clause_table.get_blank_state();
+        for id in 0..num_nodes {
+            arena.nodes.push(Node::new(id, blank_state.clone()));
+        }
+        for i in 0..num_nodes {
+            for j in (i + 1)..num_nodes {
+                arena.add_neighbor(i, j);
             }
         }
         SatSwarm {
@@ -150,7 +212,7 @@ impl SatSwarm {
         self.invariants();
     }
 
-    pub fn test_satisfiability(&mut self) -> (bool, i32) {
+    pub fn test_satisfiability(&mut self) -> TestResult {
         let start = *get_clock();
         self.arena.get_node_mut(0).activate();
         while !self.done && self.arena.nodes.iter().any(|node| node.busy()) {
@@ -158,7 +220,7 @@ impl SatSwarm {
         }
         let end = *get_clock();
         let time = end - start;
-        (self.done, time as i32)
+        (self.done, time)
     }
     fn send_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
         match to {
