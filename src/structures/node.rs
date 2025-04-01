@@ -16,7 +16,7 @@ Message types:
 use core::panic;
 use std::{collections::HashMap, fmt::Debug};
 
-use crate::{get_clock, TestResult, Topology, DEBUG_PRINT, GLOBAL_CLOCK};
+use crate::{get_clock, TestResult, TestConfig, Topology, DEBUG_PRINT, GLOBAL_CLOCK};
 
 use super::{clause_table::{self, ClauseTable}, message::{Message, MessageDestination, MessageQueue, TermUpdate, Watchdog}};
 
@@ -82,14 +82,14 @@ impl SatSwarm {
 
     pub fn generate(num_nodes: usize, top: Topology) -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(num_nodes) };
-        let blank_state = ClauseTable::get_blank_state();
+        let blank_state = ClauseTable::get_blank_state(&ClauseTable::_dummy());
         for id in 0..num_nodes {
             arena.nodes.push(Node::new(id, blank_state.clone()));
         }
         match top {
-            Topology::Grid(rows, cols) => SatSwarm::grid(arena, rows, cols),
-            Topology::Torus(rows, cols) => SatSwarm::torus(arena, rows, cols),
-            Topology::Dense(num_nodes) => SatSwarm::dense(arena, num_nodes),
+            Topology::Grid(rows, cols) => SatSwarm::grid(ClauseTable::_dummy(), rows, cols),
+            Topology::Torus(rows, cols) => SatSwarm::torus(ClauseTable::_dummy(), rows, cols),
+            Topology::Dense(num_nodes) => SatSwarm::dense(ClauseTable::_dummy(), num_nodes),
         }
     }
     pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
@@ -220,7 +220,20 @@ impl SatSwarm {
         }
         let end = *get_clock();
         let time = end - start;
-        (self.done, time)
+        TestResult {
+            simulated_result: self.done,
+            expected_result: true, // This should be passed in from the caller
+            simulated_cycles: time,
+            config: TestConfig {
+                num_nodes: self.arena.nodes.len() as i32,
+                table_bandwidth: 1,
+                topology: Topology::Grid(10, 10), // This should be passed in from the caller
+                node_bandwidth: 600,
+            },
+            testcase: "test".to_string(), // This should be passed in from the caller
+            cycles_busy: time,
+            cycles_idle: 0,
+        }
     }
     fn send_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
         match to {

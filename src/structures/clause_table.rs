@@ -236,7 +236,7 @@ impl ClauseTable {
     }
 
     pub fn get_blank_state(&self) -> CNFState {
-        return vec![[TermState::Symbolic; 3]; self.num_clauses];
+        return vec![[TermState::Symbolic; CLAUSE_LENGTH]; self.num_clauses];
         // 0s in all terms for each clause
     }
 

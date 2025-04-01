@@ -16,7 +16,7 @@ pub fn get_clock() -> &'static u64 {
     unsafe { &GLOBAL_CLOCK }
 }
 
-fn get_test_files() -> Option<Vec<std::path::PathBuf>> {
+fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
     let mut files = Vec::new();
     fn collect_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -34,7 +34,7 @@ fn get_test_files() -> Option<Vec<std::path::PathBuf>> {
         }
     }
 
-    collect_files(std::path::Path::new("/Users/tatestaples/Code/SatSwarm/src/tests"), &mut files);
+    collect_files(std::path::Path::new(test_path), &mut files);
     Some(files)
 }
 
@@ -73,20 +73,41 @@ pub struct TestResult {
 }
 pub struct TestConfig {
     pub num_nodes: i32,
-    pub table_bandwidth: u8,
+    pub table_bandwidth: u32,
     pub topology: Topology,
-    pub node_bandwidth: u8,
-}
-pub enum Topology {
-    Grid,
-    Torus,
-    Dense,
+    pub node_bandwidth: u32,
 }
 
+fn parse_topology(topology_str: &str, num_nodes: i32) -> Topology {
+    match topology_str {
+        "grid" => {
+            let size = (num_nodes as f64).sqrt() as usize;
+            Topology::Grid(size, size)
+        },
+        "torus" => {
+            let size = (num_nodes as f64).sqrt() as usize;
+            Topology::Torus(size, size)
+        },
+        "dense" => {
+            Topology::Dense(num_nodes as usize)
+        },
+        _ => panic!("Invalid topology: {}", topology_str),
+    }
+}
+
+pub enum Topology {
+    Grid(usize, usize),
+    Torus(usize, usize),
+    Dense(usize),
+}
+
+
+// example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut num_nodes = 1; // Default value for --num_nodes
+    let mut num_nodes = 100; // Default value for --num_nodes
     let mut topology = String::from("grid"); // Default value for --topology
+    let mut test_path = String::from("tests"); // Default value for --test_path
 
     // Parse command-line arguments
     let mut i = 1;
@@ -107,19 +128,19 @@ fn main() {
             "--topology" => {
                 if i + 1 < args.len() {
                     let value = args[i + 1].as_str();
-                    match value {
-                        "grid" | "torus" | "dense"  => {
-                            topology = value.to_string();
-                        }
-                        _ => {
-                            eprintln!("Invalid value for --topology: {}", value);
-                            eprintln!("Valid options are: grid, torus, dense");
-                            std::process::exit(1);
-                        }
-                    }
+                    topology = value.to_string();
                     i += 1; // Skip the value
                 } else {
                     eprintln!("Missing value for --topology");
+                    std::process::exit(1);
+                }
+            }
+            "--test_path" => {
+                if i + 1 < args.len() {
+                    test_path = args[i + 1].clone();
+                    i += 1; // Skip the value
+                } else {
+                    eprintln!("Missing value for --test_path");
                     std::process::exit(1);
                 }
             }
@@ -133,24 +154,31 @@ fn main() {
 
     println!("Number of nodes: {}", num_nodes);
     println!("Topology: {}", topology);
+    println!("Test path: {}", test_path);
 
-    // load the first test file from ./tests (use OS to get the path)
-    if let Some(files) = get_test_files() {
+    let config = TestConfig {
+        num_nodes,
+        table_bandwidth: 1,
+        topology: parse_topology(&topology, num_nodes),
+        node_bandwidth: 1,
+    };
+
+    // load test files from the specified path
+    if let Some(files) = get_test_files(&test_path) {
         for file in files.into_iter() {
             let f_copy = file.clone();
             let (clause_table, expected_result) = ClauseTable::load_file(file);
-            // println!("Expected Result: {}, file: {:?}, num_terms: {}", expected_result, f_copy, clause_table.number_of_vars());
-            // skip if the cluase table > 25 or expected result is unsat
+            // skip if the clause table > 25 or expected result is unsat
             if clause_table.number_of_vars() > 20 || !expected_result {
                 continue;
             }
             println!("Running test: {:?}", f_copy);
             let mut simulation = SatSwarm::grid(clause_table, 10, 10);
-            let (sat, cycles) = simulation.test_satisfiability();
-            println!("Satisfiable: {}({}), Cycles: {}", sat,expected_result, cycles);
+            let result = simulation.test_satisfiability();
+            println!("Satisfiable: {}({} cycles), Cycles: {}", result.simulated_result, result.simulated_cycles, result.cycles_busy);
         }
     } else {
-        println!("No tests directory found");
+        println!("No tests directory found at: {}", test_path);
     }
     println!("Done");
 }
@@ -161,14 +189,14 @@ mod tests {
 
     #[test]
     fn test_satisfiability() {
-        if let Some(files) = get_test_files() {
+        if let Some(files) = get_test_files("tests") {
             for file in files.into_iter() {
                 println!("Running test: {:?}", file);
                 let (clause_table, expected_result) = ClauseTable::load_file(file);
                 let mut simulation = SatSwarm::grid(clause_table, 10, 10);
-                let (sat, cycles) = simulation.test_satisfiability();
-                println!("Satisfiable: {}, Cycles: {}", sat, cycles);
-                assert!(sat==expected_result, "Test failed");
+                let result = simulation.test_satisfiability();
+                println!("Satisfiable: {}, Cycles: {}", result.simulated_result, result.simulated_cycles);
+                assert!(result.simulated_result == expected_result, "Test failed");
             }
         } else {
             println!("No tests directory found");
@@ -180,9 +208,9 @@ mod tests {
         for test in 0..10000 {
             let table = ClauseTable::random(10, 3);
             let mut simulation = SatSwarm::grid(table, 10, 10);
-            let (sat, cycles) = simulation.test_satisfiability();
-            if !sat {
-                println!("Satisfiable: {}, Cycles: {}", sat, cycles);
+            let result = simulation.test_satisfiability();
+            if !result.simulated_result {
+                println!("Satisfiable: {}, Cycles: {}", result.simulated_result, result.simulated_cycles);
             } else if test % 100 == 0 {
                 println!("{}/10000", test);
             }
