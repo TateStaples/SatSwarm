@@ -68,12 +68,12 @@ def write_cnf_file(clauses, filename):
             f.write(clause_str)
 
 # Create output directory if it doesn't exist
-os.makedirs("unsat_test/gen_unsat", exist_ok=True)
+os.makedirs("minisat_eval/gen_unsat", exist_ok=True)
 
 # Generate 20 different unsatisfiable formulas
 for i in range(1, 21):
     clauses = generate_unsat_3sat()
-    output_file = f"unsat_test/gen_unsat/unsat_formula_{i}.cnf"
+    output_file = f"minisat_eval/gen_unsat/unsat_formula_{i}.cnf"
     write_cnf_file(clauses, output_file)
     print(f"Generated unsatisfiable formula {i}/20: {output_file}")
 

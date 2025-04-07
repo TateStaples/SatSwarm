@@ -120,17 +120,17 @@ def check_cnf_file(file_path):
 
 def main():
     # Create output directory if it doesn't exist
-    os.makedirs("unsat_generator/results", exist_ok=True)
+    os.makedirs("minisat_eval/results", exist_ok=True)
     
     # Get all formula files
-    formula_files = glob.glob("unsat_generator/gen_unsat/unsat_formula_*.cnf")
+    formula_files = glob.glob("minisat_eval/gen_unsat/unsat_formula_*.cnf")
     
     if not formula_files:
         print("No formula files found. Please run unsat_gen.py first.")
         return
     
     # Prepare CSV file
-    csv_file = "unsat_generator/results/minisat_results.csv"
+    csv_file = "minisat_eval/results/minisat_results.csv"
     fieldnames = [
         'formula_file', 'num_vars', 'num_clauses', 'parse_time', 'simplification_time',
         'conflicts', 'decisions', 'propagations', 'conflict_literals', 
