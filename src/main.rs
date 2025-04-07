@@ -6,7 +6,7 @@ use std::env;
 use rustsat::solvers::Solve;
 use rustsat::types::{Clause, Lit};
 use rustsat::{instances::SatInstance, solvers::SolverResult};
-use structures::minisat::{build_random_testset, minisat_table};
+use rustsat_minisat::core::Minisat;
 use structures::{clause_table::ClauseTable, node::SatSwarm};
 use std::fs::OpenOptions;
 use csv::Writer;
@@ -38,6 +38,27 @@ fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
 
     collect_files(std::path::Path::new(test_path), &mut files);
     Some(files)
+}
+
+fn minisat_file(path: PathBuf) -> bool {
+    let file = std::fs::File::open(path).expect("Unable to open file");
+    let mut reader = BufReader::new(file);
+    let instance: SatInstance = SatInstance::from_dimacs(&mut reader).unwrap();
+    let mut solver: Minisat = rustsat_minisat::core::Minisat::default();
+    let res = solver.solve().unwrap();
+    solver.add_cnf(instance.into_cnf().0).unwrap();
+    res == SolverResult::Sat
+}
+fn minisat_table(table: &ClauseTable) -> bool {
+    let mut instance: SatInstance = SatInstance::new();
+    for clause in table.clause_table.iter() {
+        let clause: Clause = clause.iter().map(|&x| Lit::new(x.var as u32, x.negated)).collect();
+        instance.add_clause(clause);
+    }
+    let mut solver: Minisat = rustsat_minisat::core::Minisat::default();
+    let res = solver.solve().unwrap();
+    solver.add_cnf(instance.into_cnf().0).unwrap();
+    res == SolverResult::Sat
 }
 
 
