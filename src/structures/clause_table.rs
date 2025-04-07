@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write as IoWrite;
 use std::{collections::VecDeque, io::BufRead, path::PathBuf}; // Import VecDeque for FIFO queue
 use crate::{DEBUG_PRINT};
 use super::node::{CNFState, NodeId, TermState, VarId, CLAUSE_LENGTH}; // Import Network struct
@@ -46,7 +48,7 @@ impl ClauseTable {
         for _ in 0..num_clauses {
             let mut clause = [Term{var: 0, negated: false}; CLAUSE_LENGTH];
             for i in 0..CLAUSE_LENGTH {
-                let var = rand::random::<u8>() % num_vars as u8;
+                let var = ((rand::random::<u8>() % num_vars) + 1) as u8;
                 let negated = rand::random::<bool>();
                 clause[i] = Term{var, negated};
             }
@@ -141,11 +143,7 @@ impl ClauseTable {
         (s, sat)
     }
     
-    pub fn write_file(&self, file: PathBuf) -> Result<(), std::io::Error> {
-        use std::io::Write as IoWrite;
-        
-        // Create the file and handle any errors
-        let mut file = std::fs::File::create(file)?;
+    pub fn write_file(&self, mut file: File) -> Result<(), std::io::Error> {
         
         // Write standard DIMACS CNF header comments
         file.write_all(b"c\n")?;
@@ -153,10 +151,15 @@ impl ClauseTable {
         file.write_all(b"c\n")?;
         
         // Write the problem line with number of variables and clauses
-        file.write_all(format!("p cnf {} {}\n", self.num_vars, self.num_clauses).as_bytes())?;
+        file.write_all(format!("p cnf {} {}\n", self.num_vars, self.num_clauses-1).as_bytes())?;
         
         // Write each clause
+        let mut i = 0;
         for clause in &self.clause_table {
+            if i == self.num_clauses-1{
+                break;
+            }
+            i += 1;
             for term in clause {
                 file.write_all(format!("{} ", if term.negated { -(term.var as i32) } else { term.var as i32 }).as_bytes())?;
             }

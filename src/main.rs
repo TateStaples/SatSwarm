@@ -6,7 +6,7 @@ use std::env;
 use rustsat::solvers::Solve;
 use rustsat::types::{Clause, Lit};
 use rustsat::{instances::SatInstance, solvers::SolverResult};
-use rustsat_minisat::core::Minisat;
+use structures::minisat::{build_random_testset, minisat_file, minisat_table};
 use structures::{clause_table::ClauseTable, node::SatSwarm};
 use std::fs::OpenOptions;
 use csv::Writer;
@@ -111,6 +111,8 @@ pub enum Topology {
 
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests
 fn main() {
+    // build_random_testset(91, 20, 10, 10);
+    // return;
     let args: Vec<String> = env::args().collect();
     let mut num_nodes: usize = 100; // Default value for --num_nodes
     let mut topology = String::from("grid"); // Default value for --topology
@@ -183,7 +185,7 @@ fn run_workload(test_path: String, config: TestConfig) {
             let (mut clause_table, _) = ClauseTable::load_file(file);
             clause_table.set_bandwidth(config.table_bandwidth);
             // skip if the clause table > 25 or expected result is unsat
-            if clause_table.number_of_vars() > 20  {
+            if clause_table.number_of_vars() > 50  {
                 continue;
             }
             println!("Running test: {:?}", f_copy);

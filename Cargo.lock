@@ -45,9 +45,9 @@ checksum = "5c8214115b7bf84099f1309324e63141d4c5d7cc26862f97a0a857dbefe165bd"
 
 [[package]]
 name = "cc"
-version = "1.2.17"
+version = "1.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fcb57c740ae1daf453ae85f16e37396f672b039e00d9d866e07ddb24e328e3a"
+checksum = "525046617d8376e3db1deffb079e91cef90a89fc3ca5c185bbf8c9ecdd15cd5c"
 dependencies = [
  "shlex",
 ]
@@ -249,9 +249,9 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.2.31"
+version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5316f57387668042f561aae71480de936257848f9c43ce528e311d89a07cadeb"
+checksum = "664ec5419c51e34154eec046ebcba56312d5a2fc3b09a06da188e1ad21afadf6"
 dependencies = [
  "proc-macro2",
  "syn",
@@ -361,9 +361,9 @@ dependencies = [
 
 [[package]]
 name = "rustsat"
-version = "0.6.6"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c52f67411023383ef3e062e29b39001df6bb14b296f17cf2ea70415e8a63737f"
+checksum = "63aeff9317744deebea2676b7c4afbb9fd5f0ae6f3e0e11ed34119e2e803960e"
 dependencies = [
  "anyhow",
  "cpu-time",
@@ -377,9 +377,9 @@ dependencies = [
 
 [[package]]
 name = "rustsat-minisat"
-version = "0.4.6"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "890f73909ed9d2b066bf32a292292cbcddf7740f0c25b417647911d15b269598"
+checksum = "334dd931ca964b27dfe8a703257500b8748e2f102c7177dd15a0b06a7b2e893e"
 dependencies = [
  "anyhow",
  "bindgen",
