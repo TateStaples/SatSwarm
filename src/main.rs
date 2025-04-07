@@ -1,15 +1,15 @@
-
-use std::io::BufReader;
-use std::{path::PathBuf};
 use std::env;
+use std::io::BufReader;
+use std::path::PathBuf;
+use std::time::Duration;
 
+use csv::Writer;
 use rustsat::solvers::Solve;
 use rustsat::types::{Clause, Lit};
 use rustsat::{instances::SatInstance, solvers::SolverResult};
+use std::fs::OpenOptions;
 use structures::minisat::{build_random_testset, minisat_file, minisat_table};
 use structures::{clause_table::ClauseTable, node::SatSwarm};
-use std::fs::OpenOptions;
-use csv::Writer;
 
 mod structures;
 
@@ -40,7 +40,6 @@ fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
     Some(files)
 }
 
-
 pub const DEBUG_PRINT: bool = false;
 
 pub struct TestResult {
@@ -53,6 +52,7 @@ pub struct TestLog {
     pub test_result: TestResult,
     pub config: TestConfig,
     pub expected_result: bool,
+    pub minisat_speed: Duration,
     pub test_path: String,
 }
 #[derive(Clone)]
@@ -69,14 +69,12 @@ fn parse_topology(topology_str: &str, num_nodes: usize) -> Topology {
         "grid" => {
             let size = (num_nodes as f64).sqrt() as usize;
             Topology::Grid(size, size)
-        },
+        }
         "torus" => {
             let size = (num_nodes as f64).sqrt() as usize;
             Topology::Torus(size, size)
-        },
-        "dense" => {
-            Topology::Dense(num_nodes as usize)
-        },
+        }
+        "dense" => Topology::Dense(num_nodes as usize),
         _ => panic!("Invalid topology: {}", topology_str),
     }
 }
@@ -87,10 +85,9 @@ pub enum Topology {
     Dense(usize),
 }
 
-
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests
 fn main() {
-    // build_random_testset(91, 20, 10, 10);
+    // build_random_testset(51, 10, 3, 3);
     // return;
     let args: Vec<String> = env::args().collect();
     let mut num_nodes: usize = 100; // Default value for --num_nodes
@@ -164,17 +161,18 @@ fn run_workload(test_path: String, config: TestConfig) {
             let (mut clause_table, _) = ClauseTable::load_file(file);
             clause_table.set_bandwidth(config.table_bandwidth);
             // skip if the clause table > 25 or expected result is unsat
-            if clause_table.number_of_vars() > 50  {
+            if clause_table.number_of_vars() > 50 {
                 continue;
             }
             println!("Running test: {:?}", f_copy);
-            let expected_result = minisat_table(&clause_table);
+            let (expected_result, minisat_speed) = minisat_table(&clause_table);
             let mut simulation = SatSwarm::generate(clause_table, &config);
             let result = simulation.test_satisfiability();
             let test_log = TestLog {
                 test_result: result,
                 config: config.clone(),
                 expected_result,
+                minisat_speed,
                 test_path: f_copy.to_str().unwrap_or("unknown").to_string(),
             };
             log_test(test_log);
@@ -185,7 +183,10 @@ fn run_workload(test_path: String, config: TestConfig) {
 }
 fn config_name(config: &TestConfig) -> String {
     let test_name = config.test_dir.split('/').last().unwrap_or("unknown");
-    format!("{}-{:?}-{}", test_name, config.topology, config.node_bandwidth)
+    format!(
+        "{}-{:?}-{}",
+        test_name, config.topology, config.node_bandwidth
+    )
 }
 fn log_test(test_log: TestLog) {
     let log_file_path = format!("logs/{}.csv", config_name(&test_log.config));
@@ -209,9 +210,10 @@ fn log_test(test_log: TestLog) {
 
             // Write the header if the file is empty
             if file_is_empty {
-                    if let Err(e) = writer.write_record(&[
+                if let Err(e) = writer.write_record(&[
                     "Test Path",
                     "Expected Result",
+                    "Minisat Speed (ns)",
                     "Simulated Result",
                     "Simulated Cycles",
                     "Cycles Busy",
@@ -230,6 +232,7 @@ fn log_test(test_log: TestLog) {
             if let Err(e) = writer.write_record(&[
                 test_log.test_path,
                 test_log.expected_result.to_string(),
+                test_log.minisat_speed.as_nanos().to_string(),
                 test_log.test_result.simulated_result.to_string(),
                 test_log.test_result.simulated_cycles.to_string(),
                 test_log.test_result.cycles_busy.to_string(),
@@ -264,7 +267,10 @@ mod tests {
                 let (clause_table, expected_result) = ClauseTable::load_file(file);
                 let mut simulation = SatSwarm::grid(clause_table, 10, 10);
                 let result = simulation.test_satisfiability();
-                println!("Satisfiable: {}, Cycles: {}", result.simulated_result, result.simulated_cycles);
+                println!(
+                    "Satisfiable: {}, Cycles: {}",
+                    result.simulated_result, result.simulated_cycles
+                );
                 assert!(result.simulated_result == expected_result, "Test failed");
             }
         } else {
@@ -279,11 +285,13 @@ mod tests {
             let mut simulation = SatSwarm::grid(table, 10, 10);
             let result = simulation.test_satisfiability();
             if !result.simulated_result {
-                println!("Satisfiable: {}, Cycles: {}", result.simulated_result, result.simulated_cycles);
+                println!(
+                    "Satisfiable: {}, Cycles: {}",
+                    result.simulated_result, result.simulated_cycles
+                );
             } else if test % 100 == 0 {
                 println!("{}/10000", test);
             }
-
         }
     }
 }

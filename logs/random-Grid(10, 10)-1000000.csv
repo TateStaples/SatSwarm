@@ -1,0 +1,10 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
+tests/random/unsat/91_20_2.cnf,false,18333,false,15813376,441388645,1139948955,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/91_20_3.cnf,false,18250,false,15813376,441388645,1139948955,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/91_20_1.cnf,false,35750,false,15813376,441388645,1139948955,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/91_20_0.cnf,false,28250,false,15813376,441388645,1139948955,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/91_20_4.cnf,false,31583,false,15813376,441388645,1139948955,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/dummy_unsat.cnf,false,16625,false,20,66,1934,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/51_10_0.cnf,false,9750,false,19515,255128,1696372,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/51_10_1.cnf,false,12791,false,19515,255128,1696372,100,1,"Grid(10, 10)",1000000
+tests/random/unsat/51_10_2.cnf,false,23875,false,19515,255128,1696372,100,1,"Grid(10, 10)",1000000
