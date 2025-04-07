@@ -1,0 +1,10 @@
+formula_file,num_vars,num_clauses,parse_time,simplification_time,conflicts,decisions,propagations,conflict_literals,memory_used_mb,cpu_time,result
+unsat_formula_1.cnf,20,90,0.0,0.0,7,6,44,11,4.49,0.001102,UNSAT
+unsat_formula_10.cnf,20,90,0.0,0.0,9,10,65,16,4.48,0.000998,UNSAT
+unsat_formula_17.cnf,20,90,0.0,0.0,15,15,104,32,4.48,0.000875,UNSAT
+unsat_formula_18.cnf,20,90,0.0,0.0,10,13,69,15,4.48,0.000832,UNSAT
+unsat_formula_3.cnf,20,90,0.0,0.0,11,10,85,20,4.48,0.000813,UNSAT
+unsat_formula_4.cnf,20,90,0.0,0.0,12,11,89,24,4.49,0.00084,UNSAT
+unsat_formula_7.cnf,20,90,0.0,0.0,7,6,70,11,4.48,0.001527,UNSAT
+unsat_formula_8.cnf,20,90,0.0,0.0,16,17,92,39,4.49,0.001822,UNSAT
+unsat_formula_9.cnf,20,90,0.0,0.0,7,8,53,11,4.55,0.001768,UNSAT
