@@ -2,25 +2,17 @@
 # Using Sky130 PDK library
 
 # Read the Verilog file
-read_verilog node.v
+read_verilog ./node.v
 
-# Set the top module
-hierarchy -top node
+# Perform synthesis with a generic library
+synth -top node
 
-# Flatten the design
-flatten
+# Map to standard cells using Sky130 library
+dfflibmap -liberty ./process_lib/sky130_fd_sc_hd__ff_n40C_1v65.lib
+abc -liberty ./process_lib/sky130_fd_sc_hd__ff_n40C_1v65.lib
 
-# Convert to gate-level netlist
-techmap
-
-# Map to the Sky130 PDK
-abc -liberty hardware/process_lib/sky130_fd_sc_hd__ff_n40C_1v65.lib
-
-# Clean up
-clean
-
-# Write the synthesized netlist
-write_verilog -noattr node_synth.v
+# Write the gate-level netlist to a file
+write_verilog ./node_synth.v
 
 # Generate a report
 tee -o synthesis_report.txt stat 

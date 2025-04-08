@@ -2,75 +2,111 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-
-# Read the data
-df = pd.read_csv('../logs/tests-Grid(10, 10)-1000000.csv')
+import os
+import re
+from glob import glob
 
 # Set the style
 plt.style.use('default')
 sns.set_theme()
 
-# 1. Distribution of Simulated Cycles
+# Function to extract information from filename
+def extract_info_from_filename(filename):
+    # Extract topology and dimensions from filename
+    match = re.search(r'eval_set-([A-Za-z]+)\(([\d,]+)\)-(\d+)-\d+-\d+\.csv', filename)
+    if match:
+        topology, dimensions, nodes = match.groups()
+        return {
+            'topology': topology,
+            'dimensions': dimensions,
+            'nodes': int(nodes),
+            'filename': filename
+        }
+    return None
+
+# Get all CSV files from the data directory
+data_files = glob('evaluation/data/*.csv')
+all_data = []
+
+# Process each file
+for file_path in data_files:
+    info = extract_info_from_filename(os.path.basename(file_path))
+    if info:
+        df = pd.read_csv(file_path)
+        df['Topology'] = info['topology']
+        df['Dimensions'] = info['dimensions']
+        df['Node Count'] = info['nodes']
+        all_data.append(df)
+
+# Combine all data
+combined_df = pd.concat(all_data, ignore_index=True)
+
+# Create plots directory if it doesn't exist
+os.makedirs('evaluation/plots', exist_ok=True)
+
+# 1. Node Count vs Simulated Cycles (boxplot)
 plt.figure(figsize=(12, 8))
-sns.histplot(data=df, x='Simulated Cycles', bins=30)
-plt.title('Distribution of Simulated Cycles', fontsize=14)
-plt.xlabel('Number of Cycles', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.savefig('plots/simulated_cycles_dist.png', dpi=300, bbox_inches='tight')
+sns.boxplot(data=combined_df, x='Node Count', y='Simulated Cycles')
+plt.title('Simulated Cycles vs Node Count', fontsize=14)
+plt.xlabel('Number of Nodes', fontsize=12)
+plt.ylabel('Simulated Cycles', fontsize=12)
+plt.savefig('evaluation/plots/node_count_vs_cycles.png', dpi=300, bbox_inches='tight')
 plt.close()
 
-# 2. Busy vs Idle Cycles
+# 2. Node Count vs Efficiency
 plt.figure(figsize=(12, 8))
-busy_idle = pd.DataFrame({
-    'Type': ['Busy'] * len(df) + ['Idle'] * len(df),
-    'Cycles': df['Cycles Busy'].tolist() + df['Cycles Idle'].tolist()
-})
-sns.boxplot(data=busy_idle, x='Type', y='Cycles')
-plt.title('Distribution of Busy vs Idle Cycles', fontsize=14)
-plt.ylabel('Number of Cycles', fontsize=12)
-plt.xlabel('Cycle Type', fontsize=12)
-plt.savefig('plots/busy_idle_dist.png', dpi=300, bbox_inches='tight')
-plt.close()
-
-# 3. Efficiency Plot (Busy Cycles / Total Cycles)
-plt.figure(figsize=(12, 8))
-df['Efficiency'] = df['Cycles Busy'] / (df['Cycles Busy'] + df['Cycles Idle'])
-sns.histplot(data=df, x='Efficiency', bins=30)
-plt.title('Distribution of Solver Efficiency', fontsize=14)
-plt.xlabel('Efficiency (Busy/Total Cycles)', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.savefig('plots/efficiency_dist.png', dpi=300, bbox_inches='tight')
-plt.close()
-
-# 4. Scatter plot of Simulated Cycles vs Efficiency
-plt.figure(figsize=(12, 8))
-sns.scatterplot(data=df, x='Simulated Cycles', y='Efficiency', alpha=0.6)
-plt.title('Simulated Cycles vs Efficiency', fontsize=14)
-plt.xlabel('Number of Simulated Cycles', fontsize=12)
+combined_df['Efficiency'] = combined_df['Cycles Busy'] / (combined_df['Cycles Busy'] + combined_df['Cycles Idle'])
+sns.boxplot(data=combined_df, x='Node Count', y='Efficiency')
+plt.title('Efficiency vs Node Count', fontsize=14)
+plt.xlabel('Number of Nodes', fontsize=12)
 plt.ylabel('Efficiency (Busy/Total Cycles)', fontsize=12)
-plt.savefig('plots/cycles_vs_efficiency.png', dpi=300, bbox_inches='tight')
+plt.savefig('evaluation/plots/node_count_vs_efficiency.png', dpi=300, bbox_inches='tight')
 plt.close()
 
-# Additional plot: Test Path vs Simulated Cycles
-plt.figure(figsize=(15, 8))
-df['Test Name'] = df['Test Path'].apply(lambda x: x.split('/')[-1])
-sns.barplot(data=df.sort_values('Simulated Cycles', ascending=False).head(20), 
-           x='Test Name', y='Simulated Cycles')
-plt.xticks(rotation=45, ha='right')
-plt.title('Top 20 Most Time-Consuming Tests', fontsize=14)
-plt.xlabel('Test Name', fontsize=12)
-plt.ylabel('Number of Simulated Cycles', fontsize=12)
-plt.savefig('plots/top_20_tests.png', dpi=300, bbox_inches='tight')
+# 3. Comparison of 64-node topologies
+node_64_data = combined_df[combined_df['Node Count'] == 64]
+plt.figure(figsize=(12, 8))
+sns.boxplot(data=node_64_data, x='Topology', y='Simulated Cycles')
+plt.title('Performance Comparison of 64-Node Topologies', fontsize=14)
+plt.xlabel('Topology', fontsize=12)
+plt.ylabel('Simulated Cycles', fontsize=12)
+plt.savefig('evaluation/plots/64node_topology_comparison.png', dpi=300, bbox_inches='tight')
+plt.close()
+
+# 4. Efficiency comparison for 64-node topologies
+plt.figure(figsize=(12, 8))
+sns.boxplot(data=node_64_data, x='Topology', y='Efficiency')
+plt.title('Efficiency Comparison of 64-Node Topologies', fontsize=14)
+plt.xlabel('Topology', fontsize=12)
+plt.ylabel('Efficiency (Busy/Total Cycles)', fontsize=12)
+plt.savefig('evaluation/plots/64node_efficiency_comparison.png', dpi=300, bbox_inches='tight')
 plt.close()
 
 # Print statistics
 print("\nPerformance Statistics:")
 print("-" * 50)
-print(f"Average Simulated Cycles: {df['Simulated Cycles'].mean():,.2f}")
-print(f"Median Simulated Cycles: {df['Simulated Cycles'].median():,.2f}")
-print(f"Average Efficiency: {df['Efficiency'].mean():.2%}")
-print(f"Median Efficiency: {df['Efficiency'].median():.2%}")
+print(f"Average Simulated Cycles: {combined_df['Simulated Cycles'].mean():,.2f}")
+print(f"Median Simulated Cycles: {combined_df['Simulated Cycles'].median():,.2f}")
+print(f"Average Efficiency: {combined_df['Efficiency'].mean():.2%}")
+print(f"Median Efficiency: {combined_df['Efficiency'].median():.2%}")
+
+print("\nStatistics by Node Count:")
+print("-" * 50)
+node_stats = combined_df.groupby('Node Count').agg({
+    'Simulated Cycles': ['mean', 'median'],
+    'Efficiency': ['mean', 'median']
+}).round(2)
+print(node_stats)
+
+print("\nStatistics for 64-Node Topologies:")
+print("-" * 50)
+topology_stats = node_64_data.groupby('Topology').agg({
+    'Simulated Cycles': ['mean', 'median'],
+    'Efficiency': ['mean', 'median']
+}).round(2)
+print(topology_stats)
+
 print(f"\nTest Results:")
 print("-" * 50)
-print(f"Total Tests: {len(df)}")
-print(f"All tests passed: {df['Expected Result'].equals(df['Simulated Result'])}")
+print(f"Total Tests: {len(combined_df)}")
+print(f"All tests passed: {combined_df['Expected Result'].equals(combined_df['Simulated Result'])}")
