@@ -4,7 +4,6 @@ tests/eval_set/uf20-06.cnf,true,46823,true,50000000,199999808,192,8,1,"Torus(2, 
 tests/eval_set/uf20-01.cnf,true,29871,true,3191888,12767359,193,8,1,"Torus(2, 2)",1000000
 tests/eval_set/uf20-08.cnf,true,29002,true,13100609,52402243,193,8,1,"Torus(2, 2)",1000000
 tests/eval_set/uf20-07.cnf,true,28027,true,38224299,152897003,193,8,1,"Torus(2, 2)",1000000
-tests/eval_set/uf20-02.cnf,true,23010,true,2376547,9505995,193,8,1,"Torus(2, 2)",1000000
 tests/eval_set/uf20-05.cnf,true,25267,true,8142985,32571747,193,8,1,"Torus(2, 2)",1000000
 tests/eval_set/uf20-09.cnf,true,20527,true,50063672,200254496,192,8,1,"Torus(2, 2)",1000000
 tests/eval_set/uf20-03.cnf,true,31461,true,50000000,199999808,192,8,1,"Torus(2, 2)",1000000
