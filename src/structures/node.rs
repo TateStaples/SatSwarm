@@ -57,7 +57,6 @@ struct Arena {
     pub fn remove_neighbor(&mut self, node_id: NodeId, neighbor_id: NodeId) {
         let n1 = self.nodes.get_mut(node_id).expect("Node not found");
         n1.remove_neighbor(neighbor_id);
-
         let n2 = self.nodes.get_mut(neighbor_id).expect("Neighbor not found");
         n2.remove_neighbor(node_id);
     }
@@ -118,22 +117,29 @@ impl SatSwarm {
     pub fn torus(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
         let blank_state = clause_table.get_blank_state();
-        for i in 0..rows {
-            for j in 0..cols {
+        for row_index in 0..rows {
+            for col_index in 0..cols {
                 let id = arena.nodes.len();
-                assert!(id == i * cols + j, "Node id {} does not match expected id {}", id, i * cols + j);
+                assert!(id == row_index * cols + col_index, "Node id {} does not match expected id {}", id, row_index * cols + col_index);
                 arena.nodes.push(Node::new(id, blank_state.clone()));
                 // Connect to the node above (wrap around for torus)
-                if i > 0 {
-                    arena.add_neighbor(id, id - cols);
-                } else {
-                    arena.add_neighbor(id, id + (rows - 1) * cols);
-                }
+                if row_index > 0 {
+                    let above = id - cols;
+                    arena.add_neighbor(id, above);
+                } 
                 // Connect to the node to the left (wrap around for torus)
-                if j > 0 {
-                    arena.add_neighbor(id, id - 1);
-                } else {
-                    arena.add_neighbor(id, id + cols - 1);
+                if col_index > 0 {
+                    let left = id - 1;
+                    arena.add_neighbor(id, left);
+                } 
+
+                if row_index == rows - 1 {
+                    let below = col_index;
+                    arena.add_neighbor(id, below);
+                }
+                if col_index == cols - 1 {
+                    let right = row_index * cols;
+                    arena.add_neighbor(id, right);
                 }
             }
         }
