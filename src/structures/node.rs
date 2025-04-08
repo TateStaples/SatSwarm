@@ -121,6 +121,7 @@ impl SatSwarm {
         for i in 0..rows {
             for j in 0..cols {
                 let id = arena.nodes.len();
+                assert!(id == i * cols + j, "Node id {} does not match expected id {}", id, i * cols + j);
                 arena.nodes.push(Node::new(id, blank_state.clone()));
                 // Connect to the node above (wrap around for torus)
                 if i > 0 {
