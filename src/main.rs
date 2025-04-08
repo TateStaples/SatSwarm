@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use csv::Writer;
-use rustsat::solvers::Solve;
 use rustsat::types::{Clause, Lit};
 use rustsat::{instances::SatInstance, solvers::SolverResult};
 use std::fs::OpenOptions;
@@ -93,6 +92,8 @@ fn main() {
     let mut num_nodes: usize = 100; // Default value for --num_nodes
     let mut topology = String::from("grid"); // Default value for --topology
     let mut test_path = String::from("tests"); // Default value for --test_path
+    let mut node_bandwidth = 1_000_000; // Default value for --node_bandwidth
+    let mut table_bandwidth = 1; // Default value for --table_bandwidth
 
     // Parse command-line arguments
     let mut i = 1;
@@ -129,6 +130,40 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+            "--node_bandwidth" => {
+                if i + 1 < args.len() {
+                    node_bandwidth = args[i + 1].parse::<usize>().unwrap_or_else(|_| {
+                        eprintln!("Invalid value for --node_bandwidth: {}", args[i + 1]);
+                        std::process::exit(1);
+                    });
+                    i += 1; // Skip the value
+                } else {
+                    eprintln!("Missing value for --node_bandwidth");
+                    std::process::exit(1);
+                }
+            }
+            "--table_bandwidth" => {
+                if i + 1 < args.len() {
+                    table_bandwidth = args[i + 1].parse::<usize>().unwrap_or_else(|_| {
+                        eprintln!("Invalid value for --table_bandwidth: {}", args[i + 1]);
+                        std::process::exit(1);
+                    });
+                    i += 1; // Skip the value
+                } else {
+                    eprintln!("Missing value for --table_bandwidth");
+                    std::process::exit(1);
+                }
+            }
+            "--help" => {
+                println!("Usage: cargo run -- [OPTIONS]");
+                println!("Options:");
+                println!("  --num_nodes <NUM>       Number of nodes (default: 100)");
+                println!("  --topology <TOPOLOGY>   Topology (default: grid)");
+                println!("  --test_path <PATH>      Path to test files (default: tests)");
+                println!("  --node_bandwidth <BW>   Node bandwidth (default: 1_000_000)");
+                println!("  --table_bandwidth <BW>  Table bandwidth (default: 1)");
+                std::process::exit(0);
+            }
             _ => {
                 eprintln!("Unknown argument: {}", args[i]);
                 std::process::exit(1);
@@ -143,9 +178,9 @@ fn main() {
 
     let config = TestConfig {
         num_nodes,
-        table_bandwidth: 1,
+        table_bandwidth,
         topology: parse_topology(&topology, num_nodes),
-        node_bandwidth: 1_000_000,
+        node_bandwidth,
         test_dir: test_path.clone(),
     };
     run_workload(test_path, config);
@@ -184,8 +219,8 @@ fn run_workload(test_path: String, config: TestConfig) {
 fn config_name(config: &TestConfig) -> String {
     let test_name = config.test_dir.split('/').last().unwrap_or("unknown");
     format!(
-        "{}-{:?}-{}",
-        test_name, config.topology, config.node_bandwidth
+        "{}-{:?}-{}-{}-{}",
+        test_name, config.topology, config.num_nodes, config.table_bandwidth, config.node_bandwidth, 
     )
 }
 fn log_test(test_log: TestLog) {

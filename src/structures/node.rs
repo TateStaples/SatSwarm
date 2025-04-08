@@ -216,6 +216,11 @@ impl SatSwarm {
         }
         let end = *get_clock();
         let time = end - start;
+        if true {
+            println!("Done: {}", self.done);
+            println!("Busy cycles: {}", self.busy_cycles);
+            println!("Idle cycles: {}", self.idle_cycles);
+        }
         TestResult {
             simulated_result: self.done,
             simulated_cycles: time,
@@ -550,6 +555,7 @@ impl Node {
         if self.incoming_message.is_some() {
             // print!("Node {} received message {:?} from {:?} but already has message {:?}", self.id, message, from, msg);
             println!("Node received multiple messages in one cycle");
+            panic!("Node {} received multiple messages in one cycle", self.id);
         } else {
             self.incoming_message = Some(message);
             if self.state == NodeState::AwaitingFork {

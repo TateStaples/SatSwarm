@@ -8,7 +8,7 @@ use rustsat::solvers::Solve;
 use rustsat::types::{Clause, Lit};
 use rustsat::{instances::SatInstance, solvers::SolverResult};
 use rustsat_minisat::core::Minisat;
-use super::{clause_table::ClauseTable, node::SatSwarm};
+use super::{clause_table::ClauseTable};
 
 pub fn minisat_file(path: PathBuf) -> (bool, Duration) {
     let file = std::fs::File::open(path).expect("Unable to open file");
