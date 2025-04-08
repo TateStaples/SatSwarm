@@ -39,7 +39,7 @@ fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
     Some(files)
 }
 
-pub const DEBUG_PRINT: bool = false;
+pub const DEBUG_PRINT: bool = true;
 
 pub struct TestResult {
     pub simulated_result: bool,
