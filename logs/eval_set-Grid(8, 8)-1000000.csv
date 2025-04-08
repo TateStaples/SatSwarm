@@ -1,0 +1,5 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
+tests/eval_set/unsat_51100.cnf,false,7834,false,19185,258989,968851,64,1,"Grid(8, 8)",1000000
+tests/eval_set/51_10_0.cnf,true,7333,true,17001,245059,843005,64,1,"Grid(8, 8)",1000000
+tests/eval_set/51_10_1.cnf,true,7208,true,17399,248493,865043,64,1,"Grid(8, 8)",1000000
+tests/eval_set/51_10_2.cnf,true,7833,true,1841,46195,71629,64,1,"Grid(8, 8)",1000000

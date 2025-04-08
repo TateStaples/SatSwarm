@@ -1,2 +1,0 @@
-Test Path,Expected Result,Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
-tests/generated_unsat/unsat_1.txt,true,true,4,6,394,100,1,"Grid(10, 10)",1000000
