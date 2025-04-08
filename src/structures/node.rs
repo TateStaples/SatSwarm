@@ -13,266 +13,58 @@ Message types:
 
 use core::panic;
 use std::{collections::HashMap, fmt::Debug};
-
-use crate::{get_clock, structures::clause_table::{Term, TermState}, DEBUG_PRINT, GLOBAL_CLOCK};
-
-use super::{clause_table::ClauseTable, message::{Message, MessageDestination, MessageQueue, TermUpdate, Watchdog}};
-
-pub type NodeId = usize;
-pub type VarId = u8;
-pub const CLAUSE_LENGTH: usize = 3;
-
-struct Arena {
-    nodes: Vec<Node>,
-} impl Arena {
-    pub fn new() -> Self {
-        Arena {
-            nodes: Vec::new()
-        }
-    }
-
-    pub fn from_nodes(nodes: Vec<Node>) -> Self {
-        Arena {
-            nodes
-        }
-    }
-
-
-    pub fn get_node(&self, id: NodeId) -> &Node {self.nodes.get(id).expect("Node not found")}
-    pub fn get_node_mut(&mut self, id: NodeId) -> &mut Node {self.nodes.get_mut(id).expect("Node not found")}
-    pub fn get_node_opt(&self, id: NodeId) -> Option<&Node> {self.nodes.get(id)}
-    pub fn get_node_mut_opt(&mut self, id: NodeId) -> Option<&mut Node> {self.nodes.get_mut(id)}
-
-    pub fn add_neighbor(&mut self, node_id: NodeId, neighbor_id: NodeId) {
-        let n1 = self.nodes.get_mut(node_id).expect("Node not found");
-        n1.add_neighbor(neighbor_id);
-        
-        let n2 = self.nodes.get_mut(neighbor_id).expect("Neighbor not found");
-        n2.add_neighbor(node_id);
-    }
-
-    pub fn remove_neighbor(&mut self, node_id: NodeId, neighbor_id: NodeId) {
-        let n1 = self.nodes.get_mut(node_id).expect("Node not found");
-        n1.remove_neighbor(neighbor_id);
-
-        let n2 = self.nodes.get_mut(neighbor_id).expect("Neighbor not found");
-        n2.remove_neighbor(node_id);
-    }
-}
-pub struct SatSwarm {
-    arena: Arena,
-    clauses: ClauseTable,
-    messages: MessageQueue,
-    start_time: u64,
-    done: bool
-}
-impl SatSwarm {
-    pub fn _blank(clause_table: ClauseTable) -> Self {
-        SatSwarm {
-            arena: Arena { nodes: Vec::new() },
-            clauses: clause_table,
-            messages: MessageQueue::new(),
-            done: false,
-            start_time: *get_clock()
-        }
-    }
-
-    pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
-        let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
-        for i in 0..rows {
-            for j in 0..cols {
-                let id = arena.nodes.len();
-                arena.nodes.push(Node::new(id, clause_table.clone()));
-                if i > 0 {
-                    arena.add_neighbor(id, id - cols);
-                }
-                if j > 0 {
-                    arena.add_neighbor(id, id - 1);
-                }
-            }
-        }
-        SatSwarm {
-            arena,
-            clauses: clause_table,
-            messages: MessageQueue::new(),
-            done: false,
-            start_time: *get_clock(),
-        }
-    }
-
-    fn clock_tick() {
-        // separate function to make sure the clock is updated correctly (unsafe in multithreaded environments)
-        unsafe {
-            GLOBAL_CLOCK += 1;
-        }
-    }
-    fn clock_update(&mut self) {
-        SatSwarm::clock_tick();
-        if DEBUG_PRINT {println!("Clock TICK:");}
-        // print clock every 100,000 cycles
-        if *get_clock() % 100_000 == 0 {
-            // print clock and late_update of all nodes
-            // for node in self.arena.nodes.iter() {
-            //     print!("Node {} @ {}, ", node.id, node.last_update );
-            // }
-            if *get_clock() - self.start_time >= 50_000_000 {
-                self.done = true;
-                println!("Timeout after 50_000_000 cycles");
-            }
-            println!("Clock: {}", *get_clock());
-        }
-        for (from, to, msg) in self.messages.pop_message() {
-            if DEBUG_PRINT {println!("Message: {:?} from {:?} to {:?}", msg, from, to);}
-            self.send_message(from, to, msg);
-        }
-
-        // First, collect the data we need
-        let updates: Vec<(NodeId, Vec<NodeId>)> = self.arena.nodes.iter()
-            .map(|node| {
-                let free_neighbor_ids: Vec<NodeId> = node.neighbors.iter()
-                    .filter(|&&n| !self.arena.get_node(n).busy())
-                    .copied()
-                    .collect();
-                (node.id, free_neighbor_ids)
-            })
-            .collect();
-        // FIXME: I think this format makes it possible for forking collisions (this applies to the other branch to)
-
-        // Then, apply the updates
-        for (node_id, free_neighbors) in updates {
-            let node = self.arena.get_node_mut(node_id);
-            node.clock_update(free_neighbors, &mut self.messages);
-        }
-        self.invariants();
-    }
-
-    pub fn test_satisfiability(&mut self) -> (bool, i32) {
-        let start = *get_clock();
-        self.arena.get_node_mut(0).activate();
-        while !self.done && self.arena.nodes.iter().any(|node| node.busy()) {
-            self.clock_update();
-        }
-        let end = *get_clock();
-        let time = end - start;
-        (self.done, time as i32)
-    }
-    fn send_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
-        match to {
-            MessageDestination::Neighbor(id) => {
-                self.arena.get_node_mut(id).recieve_message(from, message);
-            },
-            MessageDestination::Broadcast => {
-                // the only broadcast rn is success which makes the whole network done
-                assert!(self.done == false, "Broadcasting success when already done");
-                match (from, message) {
-                    (MessageDestination::Neighbor(id), Message::Success) => {
-                        // print in sorted order of keys
-                        let node: &Node = self.arena.get_node(id);
-                        let model = self.recover_model(id);
-                        let mut labels: Vec<_> = model.clone().into_iter().collect();
-                        labels.sort_by_key(|&(var, _)| var);
-                        println!("Model: {:?}", labels);
-                        
-                        for clause in self.clauses.clause_table.iter() {
-                            let mut found_true = false;
-                            let mut clause_str = String::from("|\t");
-                            for (term, term_state) in clause.iter() {
-                                let term_str = match term {
-                                    Term {var, negated} => {
-                                        let val = match model.get( &var) {
-                                            Some(val) => val,
-                                            None => panic!("Variable {} not found in model", var)
-                                        };
-                                        let term_val = if *negated { !val } else { *val };
-                                        if term_val {
-                                            found_true = true;
-                                        }
-                                        match term_state {
-                                            TermState::True => {
-                                                assert!(term_val, "Term {:?} is not consistent with term state {:?}", term, term_state);
-                                            },
-                                            TermState::False => {
-                                                assert!(!term_val, "Term {:?} is not consistent with term state {:?}", term, term_state);
-                                            },
-                                            TermState::Symbolic => {
-                                            }
-                                            
-                                        }
-                                        // assert!(if term_val { *term_state == TermState::True } else { *term_state == TermState::False }, "{:?} is not consistent with term state {:?}", term, term_state);
-
-                                        if *negated {
-                                            format!("!{} ({})", var, !val)
-                                        } else {
-                                            format!("{} ({})", var, val)
-                                        }
-                                    }
-                                };
-                                clause_str.push_str(&term_str);
-                                clause_str.push_str("\t|\t");
-                            }
-                            println!("Clause: {}", clause_str);
-                            assert!(found_true, "Clause is not satisfied");
-                        }
-
-                    },
-                    _ => panic!("Broadcast message from unexpected source")
-                };
-                self.done = true;
-            }
-        }
-    }
-    fn invariants(&self) {
-        // possible add invariants here to check for correctness
-    }
-    fn recover_model(&self, id: NodeId) -> HashMap<VarId, bool> {
-        let node = self.arena.get_node(id);
-        let mut model = HashMap::new();
-        model.insert(0, false);  // first variable is always false
-        
-        for clause in self.arena.get_node(id).table.clause_table.iter() {
-            for (term, state) in clause.iter() {
-                match *state {
-                    TermState::True => {
-                        model.insert(term.var, !term.negated);
-                    },
-                    TermState::False => {
-                        model.insert(term.var, term.negated);
-                    },
-                    _ => {
-                        model.insert(term.var, false);
-                    }     
-                }
-            }
-        }
-        model
-        // node.model.clone()
-    }
-}
+use crate::{structures::clause_table::{Term, TermState}, DEBUG_PRINT};
+use super::{clause_table::ClauseTable, message::{Message, MessageDestination, MessageQueue, TermUpdate, Watchdog}, util_types::{NodeId, VarId}};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum NodeState {  
     Busy,
-    Branching,
     AwaitingFork,
     RecievingFork,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SpeculativeDepth { Depth(VarId), Unassigned}
+pub enum SpeculativeDepth { 
+    Depth(VarId), // speculative depth 0 = guarenteed, 1 = speculative, 2 = further speculation
+    Unassigned
+}
+struct VarUpdate {
+    var_id: VarId,                                  // which variable are we updating
+    clause_index: usize,                            // which clause we are updating in
+    assignment: bool,                               // what is the assignment (true/false)
+    reset: bool,                                    // should we reset the variables of higher depth
+    // speculative: bool,                              // is this a speculative assignment
+    depth: VarId,                                   // what is the depth of the assignment
+}
+struct UnitPropagation {
+    speculative_depth: VarId,
+    var_id: VarId,
+    assignment: bool
+}
+
+
 pub struct Node {
-    id: NodeId,
-    pipeline_width: usize,
-    neighbors: Vec<NodeId>,
-    table: ClauseTable,
-    update: Vec<SpeculativeDepth>,  // TODO: possible replace with with a vec
-    clause_index: usize,  // TODO: this needs to be expanded for pipelining
-    state: NodeState, 
-    speculative_branches: Vec<VarId>,
-    incoming_message: Option<Message>,
-    watchdog: Watchdog,
+    id: NodeId,                         // My id in the SatSwarm
+    neighbors: Vec<NodeId>,             // NodeId of nodes that we can send fork messages to
+    table: ClauseTable,                 // My understanding of the state
+    state: NodeState,                   // What I am doing
+    incoming_message: Option<Message>,  // message I am currently processing (should only ever be fork)
+    watchdog: Watchdog,                 // watchdog to make sure we don't get stuck
+
+    parallel_clauses: usize,                    // how many clauses are checked per clock cycle
+    pipeline_size: usize,                       // how many pipeline stages are available at a given time
+    var_updates: Vec<VarUpdate>,                // what variables have been assigned and what their state is
+    
+    // This is our backtracking state and the details are not finalized yet
+    update: Vec<SpeculativeDepth>,              // When each variable has been assigned
+    speculative_branches: Vec<VarId>,           // What are previous speculative assignments
+    unit_propagation: Vec<UnitPropagation>,     // What are previous unit propagation assignments
+    
+    
 }
 // TODO: update SAT to be when all variables are set (this should be a rare case)
 impl Node {
+    // ----- initialization ----- //
     pub fn new(id: NodeId, table: ClauseTable) -> Self {
         let vars = table.num_vars;
         Node {
@@ -280,12 +72,14 @@ impl Node {
             neighbors: Vec::new(),                              // NodeId of nodes that we can send fork messages to
             table,                                              // My understanding of the state
             update: vec![SpeculativeDepth::Unassigned; vars],   // At what speculative depth was each variable assigned (0=unassigned)
-            clause_index: 0,                                    // Which clause are we currently processing
-            pipeline_width: 1,                                  // How many clauses are checked per clock cycle
+            var_updates: Vec::new(),                            // Which clause are we currently processing
+            parallel_clauses: 1,                                  // How many clauses are checked per clock cycle
             speculative_branches: Vec::new(),                   // What is the speculative of newly assigned variables (some optimizaiton to use this as both a speculative and unit propagation buffer)
             state: NodeState::AwaitingFork,                     // make sure to start at false except for the first node so they don't repeat work
             incoming_message: None,                             // 
-            watchdog: Watchdog::new(5),
+            watchdog: Watchdog::new(0, 500),
+            pipeline_size: 10,
+            unit_propagation: Vec::new(),
         }
     }
 
@@ -297,25 +91,30 @@ impl Node {
         self.neighbors.retain(|&n| n != id);
     }
 
+    // ----- getters ----- //
     pub fn busy(&self) -> bool {return self.state != NodeState::AwaitingFork}
-    pub fn activate(&mut self) {self.state = NodeState::Branching}
-
+    pub fn activate(&mut self) {self.state = NodeState::Busy}
+    fn get_next_var(&self) -> Option<usize>{
+        return self.update.iter().position(|x| *x == SpeculativeDepth::Unassigned) // For now get the index of the first unassigned variable
+    }
+    fn get_deepest_speculation(&self) -> VarId {
+        let mut max = 0;
+        for var in self.update.iter() {
+            match var {
+                SpeculativeDepth::Depth(depth) => {
+                    if *depth > max {
+                        max = *depth;
+                    }
+                },
+                _ => {}
+            }
+        }
+        return max;
+    }
+    // ----- clock update ----- //
     pub fn clock_update(&mut self, free_neighbors: Vec<NodeId>, network: &mut MessageQueue) {
         let msg = std::mem::replace(&mut self.incoming_message, None);
         match (&self.state, msg) {
-            (NodeState::Branching, None) => {
-                self.watchdog.check();
-                if let Some(var) = self.get_next_var() {
-                    let var = var as VarId;
-                    if let Some(neighbor_id) = free_neighbors.first() {
-                        self.partner_branch(network, var, *neighbor_id);
-                    } else {
-                        self.speculative_branch(var);
-                    }
-                } else {
-                    self.sat(network);
-                }
-            },
             (NodeState::RecievingFork, Some(Message::Fork {table, assigned_vars})) => {
                 self.watchdog.check();
                 assert!(self.speculative_branches.is_empty(), "Node {} received fork while still processing", self.id);
@@ -323,17 +122,21 @@ impl Node {
                 assert!(self.update.len() == assigned_vars.len(), "nodes have different number of variables");
                 self.update = assigned_vars;
                 let var = self.get_next_var().expect("Forked SAT problem!") as VarId;
-                self.substitute(var, true, false);
+                self.substitute(var, true, false, self.get_deepest_speculation()+1);
             },
             (NodeState::Busy, None) => {
-                for _ in 0..self.pipeline_width {
-                    self.process_clause();
-                    if self.clause_index >= self.table.num_clauses || self.state != NodeState::Busy {
-                        self.state = NodeState::Branching;
-                        break;
-                    }
+                if self.update.len() < self.pipeline_size {
+                    self.branch(network, free_neighbors);
                 }
-                self.watchdog.check();
+                for var_update in self.var_updates.iter() {
+                    for _ in 0..self.parallel_clauses {
+                        self.process_clause(var_update);
+                        if var_update.clause_index >= self.table.num_clauses || self.state != NodeState::Busy {
+                            break;
+                        }
+                    }
+                    self.watchdog.check();
+                }
             },
             (NodeState::AwaitingFork, None) => {
                 self.watchdog.check();
@@ -342,46 +145,87 @@ impl Node {
         }
     }
 
-    fn get_next_var(&self) -> Option<usize>{
-        return self.update.iter().position(|x| *x == SpeculativeDepth::Unassigned) // For now get the index of the first unassigned variable
+    // ----- branching ----- //
+    fn branch(&mut self, network: &mut MessageQueue, free_neighbors: Vec<NodeId>) {
+        if let Some(UnitPropagation{var_id, assignment, speculative_depth}) = self.unit_propagation.pop() {
+            // unit propagation
+            self.substitute(var_id, assignment, false, speculative_depth);
+        } else if let Some(var) = self.get_next_var() {
+            // branching unknown variable
+            let var = var as VarId;
+            if let Some(neighbor_id) = free_neighbors.first() {
+                // forked work
+                self.partner_branch(network, var, *neighbor_id);
+            } else {
+                // speculative work
+                self.speculative_branch(var);
+            }
+        } else if self.update.is_empty() {
+            // we are done done because there is no more work
+            // TODO: check that the unsat substitutes fast enough
+            self.sat(network);
+        }
     }
 
     fn partner_branch(&mut self, network: &mut MessageQueue, var: VarId, neighbor_id: NodeId) {
-        assert!(self.state == NodeState::Branching, "Node {} is not in branching state", self.id);
+        assert!(self.state == NodeState::Busy, "Node {} is not in busy state", self.id);
         
         // copy the CNF state and send the fork. Then continue with the other branch 
         let fork_msg = Message::Fork {table: self.table.clone(), assigned_vars: self.update.clone()};
         self.send_message(network, MessageDestination::Neighbor(neighbor_id), fork_msg);  
 
         // now substitute the variable here
-        self.substitute(var, false, false);
+        self.substitute(var, false, false, self.get_deepest_speculation()+1);
     }
 
     fn speculative_branch(&mut self, var: VarId) {
-        assert!(self.state == NodeState::Branching, "Node {} is not in branching state", self.id);
-        self.speculative_branches.push(var);  //  TODO: I think this can be removedd
-        self.substitute(var, false, false);
+        assert!(self.state == NodeState::Busy, "Node {} is not in branching state", self.id);
+        self.speculative_branches.push(var);  //  I think this can be removedd
+        self.substitute(var, false, false, self.get_deepest_speculation()+1);
     }
 
-    fn substitute(&mut self, var: VarId, assignment: bool, reset: bool) {
-        todo!();
-        self.init_processing();
-    }
-    fn init_processing(&mut self) {
-        assert!(self.state == NodeState::RecievingFork || self.state == NodeState::Branching, "Node {} is not ready to process", self.id);
+    // ----- processing ----- //
+    fn substitute(&mut self, var: VarId, assignment: bool, reset: bool, speculative_depth: VarId) {
+        assert!(self.state == NodeState::Busy || self.state == NodeState::RecievingFork, "Node {} is not in branching state", self.id);
         self.state = NodeState::Busy;
-        self.clause_index = 0;
+        self.var_updates.push(VarUpdate {
+            var_id: var,                    // which variable are we updating
+            clause_index: 0,                // start at the beginning
+            assignment,                     // what is the assignment (true/false) 
+            reset,                          // should we reset the variables of higher depth
+            // speculative: false,             
+            depth: speculative_depth,         // what is the depth of the assignment
+        });
+    }
+    
+    fn mask(&self, var_update: &VarUpdate) -> [TermUpdate; CLAUSE_LENGTH] {
+        self.table.clause_table[var_update.clause_index].iter()
+            .map(|(Term { var, negated }, _)| {
+                let speculative_depth = match self.update[*var as usize] {
+                    SpeculativeDepth::Depth(depth) => depth,
+                    SpeculativeDepth::Unassigned => 0,
+                };
+                if *var == var_update.var_id {
+                    if *negated == !var_update.assignment {
+                        TermUpdate::True
+                    } else {
+                        TermUpdate::False
+                    }
+                } else if speculative_depth >= var_update.depth {
+                    TermUpdate::Reset
+                } else {
+                    TermUpdate::Unchanged
+                }
+            }
+            ).collect()
+
     }
 
-    fn mask(&self) -> [TermUpdate; CLAUSE_LENGTH] {
-        todo!()
-    }
-
-    fn process_clause(&mut self) {
-        assert!(self.clause_index < self.table.clause_table.len(), "Node {} is reading past the end of the clause", self.id);
+    fn process_clause(&mut self, var_update: &VarUpdate) {
+        assert!(var_update.clause_index < self.table.clause_table.len(), "Node {} is reading past the end of the clause", self.id);
         // later optimizations mean we can fast forward through tautologies
-        let mask = self.mask();
-        let current_clause = &mut self.table.clause_table[self.clause_index];
+        let mask = self.mask(var_update);
+        let current_clause = &mut self.table.clause_table[var_update.clause_index];
 
         // assign the variable
         let mut _symbolic_count = 0; //  potentially useful for later optimizations (unit propagation)
@@ -389,36 +233,35 @@ impl Node {
             _symbolic_count += if *term == TermState::Symbolic {1} else {0};
             match result {
                 TermUpdate::True => { // true in clause makes the whole clause true
+                    self.update[var_update.var_id as usize] = SpeculativeDepth::Depth(var_update.depth);
                     *term = TermState::True;
                 },
                 TermUpdate::False => {
+                    self.update[var_update.var_id as usize] = SpeculativeDepth::Depth(var_update.depth);
                     *term = TermState::False;
                 },
                 TermUpdate::Reset => {
+                    self.update[var_update.var_id as usize] = SpeculativeDepth::Unassigned;
                     *term = TermState::Symbolic;
                 },
                 TermUpdate::Unchanged => {}
             }
         }
         if current_clause.iter().all(|(_, state)| *state == TermState::False) {
-            self.unsat();
+            self.unsat(var_update.depth);
             return;
         } else if _symbolic_count == 1 {
-            // TODO: unit propagation
+            todo!("unit propagation");
         }
         
 
-        self.clause_index += 1;
+        var_update.clause_index += 1;
         
     }
-    
-    fn end_processing(&mut self) {
-        assert!(self.state == NodeState::Busy, "Node {} is not processing", self.id);
-        assert!(self.clause_index == self.table.clause_table.len() - 1, "Node {} is not at the end of the clause", self.id);
-        self.state = NodeState::Branching;
-    }
 
-    fn unsat(&mut self) {
+    // ----- termination ----- //
+    fn unsat(&mut self, speculative_depth: VarId) {
+        self.var_updates.retain(|var_update| var_update.depth < speculative_depth);
         if self.speculative_branches.is_empty() {
             self.state = NodeState::AwaitingFork; 
         } else {
@@ -428,8 +271,16 @@ impl Node {
 
     fn backtrack(&mut self) {
         let var = self.speculative_branches.pop().expect("No branches to backtrack");
-        self.state = NodeState::Branching; // this is changed right back to processing but for passing invariant checks
-        self.substitute(var, true, true);
+        let current_depth = if let Some(spec) = self.speculative_branches.last() {
+            if let SpeculativeDepth::Depth(depth) = self.update[*spec as usize] {
+                depth + 1
+            } else {
+                panic!("Speculating on unassigned variable");
+            }
+        } else {
+            0
+        };
+        self.substitute(var, true, true,  current_depth);
     }
 
     fn sat(&mut self, network: &mut MessageQueue) {
@@ -438,6 +289,7 @@ impl Node {
         self.send_message(network, MessageDestination::Broadcast, Message::Success);
     }
 
+    // ----- Networking interface ----- //
     pub fn recieve_message(&mut self, from: MessageDestination, message: Message) {
         match from {
             MessageDestination::Neighbor(id) => {

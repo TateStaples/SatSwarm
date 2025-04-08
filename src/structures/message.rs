@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{get_clock, DEBUG_PRINT};
+use crate::{DEBUG_PRINT};
 
 use super::{clause_table::ClauseTable, node::{NodeId, SpeculativeDepth, VarId}};
 
@@ -34,8 +34,7 @@ pub struct Watchdog {
     clock: &'static u64,
     timeout: u64,
 } impl Watchdog {
-    pub fn new(timeout: u64) -> Self {
-        let clock = get_clock();
+    pub fn new(clock: u64, timeout: u64) -> Self {
         Watchdog {
             last_update: *clock,
             clock,

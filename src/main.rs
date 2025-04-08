@@ -1,12 +1,7 @@
-use structures::{clause_table::ClauseTable, node::SatSwarm};
+use structures::{clause_table::ClauseTable, satswarm::SatSwarm};
 
 mod structures;
 // TODO: i think there is an issue with aborted resets
-
-static mut GLOBAL_CLOCK: u64 = 0;
-pub fn get_clock() -> &'static u64 {
-    unsafe { &GLOBAL_CLOCK }
-}
 
 fn get_test_files() -> Option<Vec<std::path::PathBuf>> {
     let mut files = Vec::new();
@@ -50,7 +45,6 @@ fn run_files() {
     }
     println!("Done");
 }
-pub const DEBUG_PRINT: bool = false;
 
 // TODO: implement multiple copies of the clause table so it doesn't bottleneck the networking
 fn main() {
@@ -113,4 +107,5 @@ mod tests {
 
         }
     }
+
 }

@@ -20,5 +20,8 @@ This is another slightly less trivial optimization that I think would be worthwh
 
 This requires each node to be able to recieve more than one message per clock cycle. This could also be 
 
+## Fast Forking
+We can probably say forks often take 1 cycle because you can start processing the clauses as they come in
+
 ## Clause Learning
 This is probably not going to happen because the implementation sounds complicated, propagation of learned clauses sounds moderately difficult, and such.
