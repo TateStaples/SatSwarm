@@ -1,13 +1,9 @@
 use std::env;
-use std::io::BufReader;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use csv::Writer;
-use rustsat::types::{Clause, Lit};
-use rustsat::{instances::SatInstance, solvers::SolverResult};
 use std::fs::OpenOptions;
-use structures::minisat::{build_random_testset, minisat_file, minisat_table};
+use structures::minisat::{minisat_table};
 use structures::{clause_table::ClauseTable, node::SatSwarm};
 
 mod structures;

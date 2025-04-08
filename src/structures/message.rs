@@ -26,6 +26,7 @@ pub enum Message {
         reset: bool,  // whether to flag all subsequently assigned variables as unassigned
     },
     SubstitutionAbort,
+    UnfinishedMessage,
     VariableNotFound,
 } impl Debug for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,6 +48,9 @@ pub enum Message {
             }
             Message::VariableNotFound => {
                 write!(f, "VariableNotFound")
+            },
+            Message::UnfinishedMessage => {
+                write!(f, "UnfinishedMessage")
             }
         }
     }
@@ -148,9 +152,12 @@ impl MessageQueue {
             println!("Sending {:?} from {:?} to {:?}", message, from, to);
         }
         let delay = match message {
-            // Message::Fork {..} => (std::mem::size_of::<CNFState>() + std::mem::size_of::<VarId>() - 1) / self.bandwidth + 1,
+            Message::Fork {..} => (std::mem::size_of::<CNFState>() + std::mem::size_of::<VarId>() - 1) / self.bandwidth + 1,
             _ => 1,
         };
+        for i in 1..delay {
+            self.queue.push(i, (from, to, Message::UnfinishedMessage)); 
+        }
         self.queue.push(delay, (from, to, message));  // TODO: add more realistic delays
     }
 

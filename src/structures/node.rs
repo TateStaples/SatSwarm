@@ -175,42 +175,32 @@ impl SatSwarm {
             // for node in self.arena.nodes.iter() {
             //     print!("Node {} @ {}, ", node.id, node.last_update );
             // }
-            if *get_clock() - self.start_time >= 50_000_000 {
+            if *get_clock() - self.start_time >= 150_000_000 {
                 self.done = true;
-                println!("Timeout after 50_000_000 cycles");
+                println!("Timeout after 150_000_000 cycles");
             }
             println!("Clock: {}", *get_clock());
         }
         for (from, to, msg) in self.messages.pop_message() {
             if DEBUG_PRINT {println!("Message: {:?} from {:?} to {:?}", msg, from, to);}
-            self.send_message(from, to, msg);
+            self.distribute_message(from, to, msg);
         }
         self.clauses.clock_update(&mut self.messages);
 
-        // First, collect the data we need
-        let updates: Vec<(NodeId, Vec<NodeId>)> = self.arena.nodes.iter()
-            .map(|node| {
-                let free_neighbor_ids: Vec<NodeId> = node.neighbors.iter()
-                    .filter(|&&n| !self.arena.get_node(n).busy())
-                    .copied()
-                    .collect();
-                (node.id, free_neighbor_ids)
-            })
+        let mut busy_nodes: Vec<bool> = self.arena.nodes.iter()
+            .map(|node| node.busy())
             .collect();
 
         // Then, apply the updates
-        for (node_id, free_neighbors) in updates {
-            let free_neighbors: Vec<NodeId> = free_neighbors.iter()
-                .filter(|&&n| !self.arena.get_node(n).busy())
-                .copied()
-                .collect();
-            let node = self.arena.get_node_mut(node_id);
-            if node.busy() {
+        for node in self.arena.nodes.iter_mut() {
+            // let node = self.arena.get_node_mut(node_id);
+            // assert!(busy_nodes[node.id] == node.busy(), "Node in {} but expected {}", node.busy(), busy_nodes[node.id]);
+            if busy_nodes[node.id] {
                 self.busy_cycles += 1;
             } else {
                 self.idle_cycles += 1;
             }
-            node.clock_update(free_neighbors, &mut self.messages);
+            node.clock_update(&mut self.messages, &mut busy_nodes);
         }
         self.invariants();
     }
@@ -235,7 +225,7 @@ impl SatSwarm {
             cycles_idle: self.idle_cycles,
         }
     }
-    fn send_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
+    fn distribute_message(&mut self, from: MessageDestination, to: MessageDestination, message: Message) {
         match to {
             MessageDestination::Neighbor(id) => {
                 self.arena.get_node_mut(id).recieve_message(from, message);
@@ -385,13 +375,15 @@ impl Node {
     pub fn busy(&self) -> bool {return self.state != NodeState::AwaitingFork}
     pub fn activate(&mut self) {self.state = NodeState::Branching}
 
-    pub fn clock_update(&mut self, free_neighbors: Vec<NodeId>, network: &mut MessageQueue) {
+    pub fn clock_update(&mut self, network: &mut MessageQueue, busy_nodes: &mut Vec<bool>) {
         let msg = std::mem::replace(&mut self.incoming_message, None);
         match (&self.state, msg) {
             (NodeState::Branching, null_msg) => {
                 self.watchdog.check();
                 assert!(null_msg.is_none(), "Node {} received unexpected message", self.id);
-                if let Some(neighbor_id) = free_neighbors.first() {
+                if let Some(neighbor_id) = self.neighbors.iter().find(|&&n| busy_nodes[n] == false) {
+                    assert!(busy_nodes[*neighbor_id] == false, "Node {} is busy but was expected to be free", *neighbor_id);
+                    busy_nodes[*neighbor_id] = true;
                     self.partner_branch(network, *neighbor_id);
                 } else {
                     self.speculative_branch(network);
@@ -424,9 +416,12 @@ impl Node {
             (NodeState::AbortingProcess, Some(Message::SubstitutionMask{..})) => {  // round-trip cancellation hasn't propagated yet
                 self.watchdog.check();
             },
-            (NodeState::AwaitingFork, _) => {
+            (NodeState::AwaitingFork, None) => {
                 self.watchdog.check();
             },  // do nothing
+            (NodeState::RecievingFork, Some(Message::UnfinishedMessage)) => {
+                self.watchdog.check();
+            },
             (_, m) => panic!("{:?} received unexpected message {:?}", self, m)
         }
     }
@@ -550,31 +545,21 @@ impl Node {
     }
 
     pub fn recieve_message(&mut self, from: MessageDestination, message: Message) {
-        match from {
-            MessageDestination::Neighbor(id) => {
+        match (&from, &self.state, &self.incoming_message, &message) {
+            (_, _, Some(_), _) => {
+                panic!("Node {} received multiple messages in one cycle", self.id);
+            },
+            (MessageDestination::Neighbor(id), NodeState::AwaitingFork | NodeState::RecievingFork, None, Message::Fork {..} | Message::UnfinishedMessage) => {
                 assert!(self.neighbors.contains(&id), "Node {:?} received message from non-neighbor", self);
-            },
-            MessageDestination::ClauseTable => {
-                assert!(self.state == NodeState::ProcessingClauses || self.state == NodeState::AbortingProcess, "Node {:?} received message from unexpected source", self);  // FIXME: we have a weird edge case where Claues are coming in from previous UNSAT and node starts processing a different fork but misinterprets the message
-            },
-            _ => panic!("{:?} received unexpected message source", self)
-        }
-        if self.incoming_message.is_some() {
-            // print!("Node {} received message {:?} from {:?} but already has message {:?}", self.id, message, from, msg);
-            println!("Node received multiple messages in one cycle");
-            panic!("Node {} received multiple messages in one cycle", self.id);
-        } else {
-            self.incoming_message = Some(message);
-            if self.state == NodeState::AwaitingFork {
-                match self.incoming_message {
-                    Some(Message::Fork {..}) => {
-                        self.state = NodeState::RecievingFork;
-                    },
-                    _ => {
-                        panic!("Node {} received unexpected message", self.id);
-                    }
-                }
+                self.incoming_message = Some(message);
+                if DEBUG_PRINT {println!("Node {} received fork from neighbor {}", self.id, id);}
                 self.state = NodeState::RecievingFork;
+            },
+            (MessageDestination::ClauseTable, NodeState::ProcessingClauses, None, _) => {
+                self.incoming_message = Some(message);
+            },
+            _ => {
+                panic!("Node {:?} received message {:?} with incoming message {:?} from {:?}", self, message, self.incoming_message, from);
             }
         }
     }
