@@ -370,7 +370,7 @@ impl Node {
             speculative_branches: Vec::new(),
             state: NodeState::AwaitingFork,  // make sure to start at false except for the first node so they don't repeat work
             incoming_message: None,
-            watchdog: Watchdog::new(150),
+            watchdog: Watchdog::new(10000),
         }
     }
 

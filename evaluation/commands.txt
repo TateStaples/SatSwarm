@@ -1,11 +1,18 @@
 # Torus (num nodes 8, 64, 144, 324, 625)
 
-cargo run -- --num_nodes 16 --topology torus --test_path tests/eval_set
+cargo run -- --num_nodes 8 --topology torus --test_path tests/eval_set
 cargo run -- --num_nodes 64 --topology torus --test_path tests/eval_set
 cargo run -- --num_nodes 144 --topology torus --test_path tests/eval_set
 cargo run -- --num_nodes 324 --topology torus --test_path tests/eval_set
 cargo run -- --num_nodes 625 --topology torus --test_path tests/eval_set
 
+
+# Grid (num nodes 8 - 625)
+cargo run -- --num_nodes 8 --topology grid --test_path tests/eval_set
+cargo run -- --num_nodes 64 --topology grid --test_path tests/eval_set
+cargo run -- --num_nodes 144 --topology grid --test_path tests/eval_set
+cargo run -- --num_nodes 324 --topology grid --test_path tests/eval_set
+cargo run -- --num_nodes 625 --topology grid --test_path tests/eval_set
 
 # topology
 
