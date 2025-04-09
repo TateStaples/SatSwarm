@@ -72,7 +72,6 @@ impl SatSwarm {
             Topology::Torus(rows, cols) => SatSwarm::torus(clause_table, rows, cols),
             Topology::Dense(num_nodes) => SatSwarm::dense(clause_table, num_nodes),
         };
-        swarm.clauses.set_bandwidth(config.table_bandwidth);
         swarm.messages.set_bandwidth(config.node_bandwidth);
         swarm
     }
@@ -138,7 +137,7 @@ impl SatSwarm {
     }
 
     fn clock_update(&mut self, clock: u64) {
-        if DEBUG_PRINT {println!("Clock TICK:");}
+        if DEBUG_PRINT {println!("Clock TICK: {}", clock);}
         // print clock every 100,000 cycles
         if clock % 100_000 == 0 {
             // print clock and late_update of all nodes
@@ -159,7 +158,6 @@ impl SatSwarm {
         let mut busy_nodes: Vec<bool> = self.arena.nodes.iter()
             .map(|node| node.busy())
             .collect();
-
         // Then, apply the updates
         for node in self.arena.nodes.iter_mut() {
             // let node = self.arena.get_node_mut(node_id);
@@ -204,6 +202,7 @@ impl SatSwarm {
                 assert!(self.done == false, "Broadcasting success when already done");
                 match (message, from) {
                     (Message::Success, MessageDestination::Neighbor(id)) => {
+                        self.done = true;
                         // print in sorted order of keys
                         let node: &Node = self.arena.get_node(id);
                         let model = self.recover_model(id);
@@ -255,7 +254,6 @@ impl SatSwarm {
                     },
                     _ => panic!("Broadcast message from unexpected source")
                 };
-                self.done = true;
             }
         }
     }

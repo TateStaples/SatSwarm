@@ -1,0 +1,2 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth
+tests/aim/aim-100-6_0-yes1-2.cnf,true,69625,true,2137,202609,11091,100,"Torus(10, 10)",1000000

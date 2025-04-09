@@ -1,0 +1,10 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth
+tests/random/sat/51_10_0.cnf,true,6542,true,51,51,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_1.cnf,true,4209,true,26,26,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_2.cnf,true,3375,true,26,26,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_0.cnf,true,6583,true,51,51,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_1.cnf,true,2416,true,26,26,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_2.cnf,true,2666,true,26,26,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_0.cnf,true,4791,true,51,51,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_1.cnf,true,2333,true,26,26,0,1,"Grid(1, 1)",1000000
+tests/random/sat/51_10_2.cnf,true,2667,true,26,26,0,1,"Grid(1, 1)",1000000

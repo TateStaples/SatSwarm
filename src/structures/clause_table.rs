@@ -20,10 +20,8 @@ pub type ClauseState = [TermState; CLAUSE_LENGTH];
 pub type CNFState = Vec<ClauseState>;
 pub struct ClauseTable {
     pub clause_table: Vec<[(Term, TermState); CLAUSE_LENGTH]>,   // 2D Vec to store the table of clauses
-    // TODO: Shaan, I removed the clock because it was unused
     pub num_clauses: usize,           // Number of clauses in the table
     pub num_vars: usize,              // Number of variables in the table
-    table_bandwidth: usize,          // Bandwidth of the table
 }
 
 impl ClauseTable {
@@ -33,7 +31,6 @@ impl ClauseTable {
             clause_table: vec![[Default::default(); CLAUSE_LENGTH]; num_clauses as usize], // Initialize the clause table with 0s
             num_clauses: num_clauses, // Initialize the number of clauses
             num_vars: 1,
-            table_bandwidth: 1,
         }
     }
 
@@ -55,7 +52,6 @@ impl ClauseTable {
             clause_table,
             num_clauses,
             num_vars: (num_vars as usize),
-            table_bandwidth: 1,
         }
     }
 
@@ -126,8 +122,7 @@ impl ClauseTable {
         let s = Self {
             clause_table: clauses,
             num_clauses: num_clauses,
-            num_vars: (var_count+1) as usize,
-            table_bandwidth: 1,
+            num_vars: (var_count+1) as usize
         };
 
         (s, sat)
@@ -160,9 +155,6 @@ impl ClauseTable {
         Ok(())
     }
 
-    pub fn set_bandwidth(&mut self, bandwidth: usize) {
-        self.table_bandwidth = bandwidth;
-    }
     pub fn number_of_vars(&self) -> usize {
         self.clause_table.iter().map(|c| c.iter().map(|(t, _)| t.var).max().unwrap()).max().unwrap() as usize
     }
@@ -170,6 +162,6 @@ impl ClauseTable {
 
 impl Clone for ClauseTable {
     fn clone(&self) -> Self {
-        Self { clause_table: self.clause_table.clone(), num_clauses: self.num_clauses, num_vars: self.num_vars, table_bandwidth: self.table_bandwidth }
+        Self { clause_table: self.clause_table.clone(), num_clauses: self.num_clauses, num_vars: self.num_vars }
     }
 }
