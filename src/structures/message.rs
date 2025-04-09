@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use super::{clause_table::{CNFState, ClauseTable}, node::SpeculativeDepth, util_types::{NodeId, VarId, DEBUG_PRINT}};
+use super::{clause_table::{CNFState, ClauseTable}, util_types::{NodeId, VarId, DEBUG_PRINT}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MessageDestination {
@@ -10,8 +10,7 @@ pub enum MessageDestination {
 
 pub enum Message {
     Fork {
-        table: ClauseTable,  // CNF assignment buffer state
-        assigned_vars: Vec<SpeculativeDepth>,   // List of already assigned variables (later work can make this more complex)
+        assignments: Vec<(VarId, bool, bool)>  // The hardware implementation should be a bit different
     },
     UnfinishedMessage,
     Success,

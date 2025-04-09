@@ -199,7 +199,8 @@ impl SatSwarm {
             },
             MessageDestination::Broadcast => {
                 // the only broadcast rn is success which makes the whole network done
-                assert!(self.done == false, "Broadcasting success when already done");
+                // assert!(self.done == false, "Broadcasting success when already done");
+                if self.done {return;}
                 match (message, from) {
                     (Message::Success, MessageDestination::Neighbor(id)) => {
                         self.done = true;

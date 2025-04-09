@@ -14,7 +14,7 @@ fn main() {
     // build_random_testset(51, 10, 3, 3);
     // return;
     let args: Vec<String> = env::args().collect();
-    let mut num_nodes: usize = 100; // Default value for --num_nodes
+    let mut num_nodes: usize = 1; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
     let mut test_path = String::from("tests"); // Default value for --test_path
     let mut node_bandwidth = 1_000_000; // Default value for --node_bandwidth
@@ -164,7 +164,12 @@ fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
                 if let Ok(entry) = entry {
                     let path = entry.path();
                     if path.is_file() {
-                        // println!("Found test file: {:?}", path);
+                        let cnf = path.file_name().unwrap().to_str().unwrap().ends_with(".cnf");
+                        if !cnf {
+                            println!("Skipping file: {:?}", path);
+                            continue;
+                        }
+                        // println!("Found test file: {:?} ends with .cnf? {}", path, path.file_name().unwrap().to_str().unwrap().ends_with(".cnf"));
                         files.push(path);
                     } else if path.is_dir() {
                         collect_files(&path, files);
@@ -184,7 +189,7 @@ fn run_workload(test_path: String, config: TestConfig) {
             let f_copy = file.clone();
             let (mut clause_table, _) = ClauseTable::load_file(file);
             // skip if the clause table > 25 or expected result is unsat
-            if clause_table.number_of_vars() <= 50 {
+            if clause_table.number_of_vars() > 100 {
                 continue;
             }
             println!("Running test: {:?}", f_copy);
