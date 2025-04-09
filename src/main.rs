@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use csv::Writer;
 use std::fs::OpenOptions;
-use structures::minisat::{minisat_table};
-use structures::{clause_table::ClauseTable, node::SatSwarm};
+use structures::minisat::minisat_table;
+use structures::{clause_table::ClauseTable, satswarm::SatSwarm};
 
 mod structures;
 
@@ -34,9 +34,6 @@ fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
     collect_files(std::path::Path::new(test_path), &mut files);
     Some(files)
 }
-
-pub const DEBUG_PRINT: bool = false;
-
 pub struct TestResult {
     pub simulated_result: bool,
     pub simulated_cycles: u64,
