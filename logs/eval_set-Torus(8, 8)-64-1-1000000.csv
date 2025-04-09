@@ -1,0 +1,11 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
+tests/eval_set/uf20-06.cnf,true,46110,true,6380026,388001073,20320591,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-01.cnf,true,32638,true,1995258,127668174,28338,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-08.cnf,true,18197,true,4211015,265144534,4360426,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-07.cnf,true,30470,true,633201,40496526,28338,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-02.cnf,true,39681,true,3149579,200959122,613934,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-05.cnf,true,27398,true,8121612,476362898,43420270,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-09.cnf,true,22636,true,4074599,257174907,3599429,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-03.cnf,true,35666,true,4706981,293643833,7602951,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-04.cnf,true,34252,true,303363,19386894,28338,64,1,"Torus(8, 8)",1000000
+tests/eval_set/uf20-010.cnf,true,28949,true,649915,41566222,28338,64,1,"Torus(8, 8)",1000000

@@ -1,0 +1,18 @@
+# Yosys synthesis script for node module
+# Using Sky130 PDK library
+
+# Read the Verilog file
+read_verilog ./node.v
+
+# Perform synthesis with a generic library
+synth -top node
+
+# Map to standard cells using Sky130 library
+dfflibmap -liberty ./process_lib/sky130_fd_sc_hd__ff_n40C_1v65.lib
+abc -liberty ./process_lib/sky130_fd_sc_hd__ff_n40C_1v65.lib
+
+# Write the gate-level netlist to a file
+write_verilog ./node_synth.v
+
+# Generate a report
+tee -o synthesis_report.txt stat 

@@ -1,0 +1,11 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
+tests/eval_set/uf20-06.cnf,true,61132,true,1541062,98603001,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-01.cnf,true,26503,true,323558,20682745,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-08.cnf,true,15706,true,688392,44032121,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-07.cnf,true,27323,true,633401,40512697,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-02.cnf,true,23244,true,3161216,202292857,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-05.cnf,true,25282,true,2465642,157776121,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-09.cnf,true,27446,true,5748718,367892985,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-03.cnf,true,32190,true,8305928,531554425,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-04.cnf,true,43777,true,303533,19401145,24967,64,1,Dense(64),1000000
+tests/eval_set/uf20-010.cnf,true,40091,true,4845274,310072569,24967,64,1,Dense(64),1000000
