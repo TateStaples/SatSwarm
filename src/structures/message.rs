@@ -93,7 +93,6 @@ struct CircularBuffer<T, const N: usize> {
 }
 pub struct MessageQueue {
     last_clock_update: u64,
-    bandwidth: usize,
     queue: CircularBuffer<(MessageDestination, MessageDestination, Message), 64>
 }
 impl MessageQueue {
@@ -101,14 +100,8 @@ impl MessageQueue {
         MessageQueue {
             last_clock_update: 0,
             queue: CircularBuffer::new(),
-            bandwidth: 1_000,
         }
     }
-
-    pub fn set_bandwidth(&mut self, bandwidth: usize) {
-        self.bandwidth = bandwidth;
-    }
-
     fn check_clock(&mut self, clock: u64) {
         for _ in self.last_clock_update..clock {
             self.queue.step();

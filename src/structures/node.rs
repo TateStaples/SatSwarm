@@ -65,7 +65,7 @@ pub struct Node {
 // TODO: update SAT to be when all variables are set (this should be a rare case)
 impl Node {
     // ----- initialization ----- //
-    pub fn new(id: NodeId, table: ClauseTable) -> Self {
+    pub fn new(id: NodeId, table: ClauseTable, parallel_clauses: usize) -> Self {
         let vars = table.num_vars;
         Node {
             id,                                                 // My id
@@ -73,7 +73,7 @@ impl Node {
             table,                                              // My understanding of the state
             assignment_time: vec![SpeculativeDepth::Unassigned; vars],   // At what speculative depth was each variable assigned (0=unassigned)
             var_updates: Vec::new(),                            // Which clause are we currently processing
-            parallel_clauses: 100,                                  // How many clauses are checked per clock cycle
+            parallel_clauses,                                   // How many clauses are checked per clock cycle
             speculative_branches: Vec::new(),                   // What is the speculative of newly assigned variables (some optimizaiton to use this as both a speculative and unit propagation buffer)
             state: NodeState::AwaitingFork,                     // make sure to start at false except for the first node so they don't repeat work
             incoming_message: None,                             // 

@@ -68,19 +68,19 @@ impl SatSwarm {
     }
     pub fn generate(clause_table: ClauseTable, config: &TestConfig) -> Self {
         let mut swarm = match config.topology {
-            Topology::Grid(rows, cols) => SatSwarm::grid(clause_table, rows, cols),
-            Topology::Torus(rows, cols) => SatSwarm::torus(clause_table, rows, cols),
-            Topology::Dense(num_nodes) => SatSwarm::dense(clause_table, num_nodes),
+            Topology::Grid(rows, cols) => SatSwarm::grid(clause_table, rows, cols, config.node_bandwidth),
+            Topology::Torus(rows, cols) => SatSwarm::torus(clause_table, rows, cols, config.node_bandwidth),
+            Topology::Dense(num_nodes) => SatSwarm::dense(clause_table, num_nodes, config.node_bandwidth),
         };
-        swarm.messages.set_bandwidth(config.node_bandwidth);
+        // swarm.messages.set_bandwidth(config.node_bandwidth);
         swarm
     }
-    pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
+    pub fn grid(clause_table: ClauseTable, rows: usize, cols: usize, node_bandwidth: usize)  -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
         for i in 0..rows {
             for j in 0..cols {
                 let id = arena.nodes.len();
-                arena.nodes.push(Node::new(id, clause_table.clone()));
+                arena.nodes.push(Node::new(id, clause_table.clone(), node_bandwidth));
                 if i > 0 {
                     arena.add_neighbor(id, id - cols);
                 }
@@ -92,13 +92,13 @@ impl SatSwarm {
         SatSwarm::build(arena, clause_table)
     }
 
-    pub fn torus(clause_table: ClauseTable, rows: usize, cols: usize)  -> Self {
+    pub fn torus(clause_table: ClauseTable, rows: usize, cols: usize, node_bandwidth: usize)  -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(rows * cols) };
         for row_index in 0..rows {
             for col_index in 0..cols {
                 let id = arena.nodes.len();
                 assert!(id == row_index * cols + col_index, "Node id {} does not match expected id {}", id, row_index * cols + col_index);
-                arena.nodes.push(Node::new(id, clause_table.clone()));
+                arena.nodes.push(Node::new(id, clause_table.clone(), node_bandwidth));
                 // Connect to the node above (wrap around for torus)
                 if row_index > 0 {
                     let above = id - cols;
@@ -123,10 +123,10 @@ impl SatSwarm {
         SatSwarm::build(arena, clause_table)
     }
 
-    pub fn dense(clause_table: ClauseTable, num_nodes: usize) -> Self {
+    pub fn dense(clause_table: ClauseTable, num_nodes: usize, node_bandwidth: usize) -> Self {
         let mut arena = Arena { nodes: Vec::with_capacity(num_nodes) };
         for id in 0..num_nodes {
-            arena.nodes.push(Node::new(id, clause_table.clone()));
+            arena.nodes.push(Node::new(id, clause_table.clone(), node_bandwidth));
         }
         for i in 0..num_nodes {
             for j in (i + 1)..num_nodes {
@@ -199,7 +199,8 @@ impl SatSwarm {
             },
             MessageDestination::Broadcast => {
                 // the only broadcast rn is success which makes the whole network done
-                assert!(self.done == false, "Broadcasting success when already done");
+                // assert!(self.done == false, "Broadcasting success when already done");
+                if self.done { return; }
                 match (message, from) {
                     (Message::Success, MessageDestination::Neighbor(id)) => {
                         self.done = true;
