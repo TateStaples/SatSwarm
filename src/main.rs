@@ -108,6 +108,11 @@ fn main() {
         num_vars,
         test_dir: test_path.clone(),
     };
+    let log_file_path = format!("logs/{}.csv", config_name(&config));
+    if std::path::Path::new(&log_file_path).exists() {
+        eprintln!("Configuration with name '{}' already exists. Exiting to avoid overwriting logs.", log_file_path);
+        std::process::exit(1);
+    }
     run_workload(test_path, config);
 
     println!("Done");
