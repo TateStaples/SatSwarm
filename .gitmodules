@@ -1,0 +1,3 @@
+[submodule "memory/cacti"]
+	path = memory/cacti
+	url = git@github.com:HewlettPackard/cacti.git
