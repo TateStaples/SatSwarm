@@ -47,3 +47,16 @@ Main algorithmic improvements over time, maybe it is wise to incorporate these f
 
 Propagate (check where other vars are assigned) is very parallelizable
 
+_Now this memory model is cool_
+"SAT-Accel’s propagation module contains 4 processing elements
+(PEs) and can check up to 4 clauses in parallel. Each PE handles
+a range of address where multiple addresses may be binned to
+the same PE, possibly causing stalls on the broadcast channel. SAT-
+Accel utilizes 8 PEs for backtracking, and they reverse the operation
+done by the propagation PEs."
+
+"t uses an 8 byte representation of the
+clause. 4 bytes are used for the clause’s signature by XOR all the
+variables in that clause, and another 4 bytes to track the number of
+unassigned variables. For example:"
+
