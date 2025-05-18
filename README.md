@@ -75,6 +75,11 @@ The simulator can be run with various command-line arguments:
 cargo run -- [OPTIONS]
 ```
 
+for example:
+```bash
+cargo run -- --num_nodes 1 --topology torus --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/tests/eval_set --node_bandwidth 100 --num_vars 20
+```
+
 Options:
 - `--num_nodes <NUM>`: Number of nodes (default: 100)
 - `--topology <TOPOLOGY>`: Network topology (default: grid)

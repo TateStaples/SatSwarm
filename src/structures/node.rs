@@ -44,27 +44,40 @@ struct UnitPropagation {
 
 
 pub struct Node {
-    pub id: NodeId,                         // My id in the SatSwarm
-    neighbors: Vec<NodeId>,             // NodeId of nodes that we can send fork messages to
-    pub table: ClauseTable,                 // My understanding of the state
-    state: NodeState,                   // What I am doing
-    incoming_message: Option<Message>,  // message I am currently processing (should only ever be fork)
-    watchdog: Watchdog,                 // watchdog to make sure we don't get stuck
+    /// Unique identifier for the node.
+    pub id: NodeId,
+    /// List of neighboring nodes that can send fork messages.
+    neighbors: Vec<NodeId>,
+    /// Local understanding of the SAT problem state.
+    pub table: ClauseTable,
+    /// Current state of the node.
+    state: NodeState,
 
-    parallel_clauses: usize,                    // how many clauses are checked per clock cycle
-    pipeline_size: usize,                       // how many pipeline stages are available at a given time
-    var_updates: Vec<VarUpdate>,                // what variables have been assigned and what their state is
-    
-    // This is our backtracking state and the details are not finalized yet
-    assignment_time: Vec<SpeculativeDepth>,              // When each variable has been assigned
-    speculative_branches: Vec<VarId>,           // What are previous speculative assignments
-    unit_propagation: Vec<UnitPropagation>,     // What are previous unit propagation assignments
-    
-    
+    /// Message currently being processed.
+    incoming_message: Option<Message>,
+    /// Watchdog to prevent node from getting stuck.
+    watchdog: Watchdog,
+    /// Number of clauses checked per clock cycle.
+    parallel_clauses: usize,
+    /// Number of pipeline stages available at a given time.
+    pipeline_size: usize,
+    /// Variables that have been assigned and their state.
+    var_updates: Vec<VarUpdate>,
+
+    /// Tracks when each variable was assigned in the SAT solving process.
+    /// Each element corresponds to a variable and contains its assignment depth and value.
+    assignment_time: Vec<SpeculativeDepth>,
+    /// Tracks the speculative branches of newly assigned variables.
+    speculative_branches: Vec<VarId>,
+    /// Tracks unit propagation assignments.
+    unit_propagation: Vec<UnitPropagation>,
 }
+
+
 // TODO: update SAT to be when all variables are set (this should be a rare case)
 impl Node {
-    // ----- initialization ----- //
+    
+    /// Creates a new node with given arguments
     pub fn new(id: NodeId, table: ClauseTable, parallel_clauses: usize) -> Self {
         let vars = table.num_vars;
         Node {
@@ -83,20 +96,29 @@ impl Node {
         }
     }
 
+    /// Adds a neighbour to the node, used by the topology to set up the network
     pub fn add_neighbor(&mut self, id: NodeId) {
         self.neighbors.push(id);
     }
 
+    /// Removes a neighbour from the node, used by the topology to tear down the network (remove certain connections)
     pub fn remove_neighbor(&mut self, id: NodeId) {
         self.neighbors.retain(|&n| n != id);
     }
 
-    // ----- getters ----- //
-    pub fn busy(&self) -> bool {return self.state != NodeState::AwaitingFork}
+    /// Activates the node -- sets it to "busy"
     pub fn activate(&mut self) {self.state = NodeState::Busy;}
+
+    // ----- getters ----- //
+    /// 
+    pub fn busy(&self) -> bool {return self.state != NodeState::AwaitingFork}
+
+
     fn get_next_var(&self) -> Option<usize>{
         return self.assignment_time.iter().position(|x| *x == SpeculativeDepth::Unassigned) // For now get the index of the first unassigned variable
     }
+
+
     fn get_deepest_speculation(&self) -> VarId {
         let mut max = 0;
         for var in self.assignment_time.iter() {

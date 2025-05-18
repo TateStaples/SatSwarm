@@ -5,8 +5,10 @@ import os
 
 # Define the data files
 data_dir = 'data'
-torus_file = os.path.join(data_dir, 'eval_set-Torus(8, 8)-64-1-1000000.csv')
-dense_file = os.path.join(data_dir, 'eval_set-Dense(64)-64-1-1000000.csv')
+# torus_file = os.path.join(data_dir, 'eval_set-Torus(8, 8)-64-1-1000000.csv')
+torus_file = os.path.join(data_dir, 'satlib-Torus(8, 8)-64-100-50.csv')
+# dense_file = os.path.join(data_dir, 'eval_set-Dense(64)-64-1-1000000.csv')
+dense_file = os.path.join(data_dir, 'satlib-Dense(64)-64-100-50.csv')
 
 # Clock frequency in Hz (1 GHz = 1,000,000,000 Hz)
 clock_frequency = 1_000_000_000  # 1 GHz
@@ -126,4 +128,22 @@ dense_corr = combined_data['Minisat Time (s)'].corr(combined_data['Dense(64) Tim
 
 print("\nCorrelation with Minisat Time:")
 print(f"Torus(8, 8): {torus_corr:.4f}")
-print(f"Dense(64): {dense_corr:.4f}") 
+print(f"Dense(64): {dense_corr:.4f}")
+
+# Create boxplot comparison
+plt.figure(figsize=(10, 6))
+boxplot_data = [
+    combined_data['Minisat Time (s)'],
+    combined_data['Torus(8, 8) Time (s)'],
+    combined_data['Dense(64) Time (s)']
+]
+plt.boxplot(boxplot_data, labels=['Minisat', 'Torus(8, 8)', 'Dense(64)'])
+plt.ylabel('Execution Time (seconds)')
+plt.title('Distribution of Execution Times')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.yscale('log')  # Use log scale for better visualization
+plt.tight_layout()
+
+# Save the boxplot
+plt.savefig('execution_time_boxplot.png', dpi=300)
+print("Boxplot saved as 'execution_time_boxplot.png'") 
