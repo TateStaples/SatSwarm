@@ -1,10 +1,11 @@
-use std::cmp::PartialEq;
+use std::cmp::{PartialEq, Reverse};
 use std::collections::{BinaryHeap, HashMap};
-
+use std::process::exit;
 use crate::{structures::clause_table::{TermState}, TestConfig};
 use crate::structures::clause_table::ProblemState;
-use crate::structures::node::{AssignmentCause, Fork, NodeState};
+use crate::structures::node::{AssignmentCause, Fork, NodeState, VariableAssignment};
 use crate::structures::testing::{TestResult, Topology};
+use crate::structures::util_types::Time;
 use super::{clause_table::ClauseTable, node::Node, util_types::{NodeId, VarId, DEBUG_PRINT}};
 
 /// Structure to control access and adjacency information about the network
@@ -53,7 +54,7 @@ impl Arena {
 
 pub struct Network {
     arena: Arena,
-    fork_delay: u64,
+    fork_delay: Time,
     results: TestResult
 }
 
@@ -64,7 +65,7 @@ impl Network {
     fn build(arena: Arena) -> Network {
         Network {
             arena,
-            fork_delay: 0, // TODO: make this better later for timing purposes
+            fork_delay: 1, // TODO: make this better later for timing purposes
             results: Default::default()
         }
     }
@@ -151,34 +152,47 @@ impl Network {
     /// Nodes are activated by earliest local time (filtering out un-active ones to prevent livelock)
     /// UNSAT will backtrack starting from the latest speculative decisions
     /// Idle nodes still earliest neighboring speculative decision
-    fn run_event_loop(&mut self) {
-        self.results = TestResult {  // confirm that we start with the correct default values
+    fn run_event_loop(&mut self, start_point: NodeId) {
+        if DEBUG_PRINT {
+            println!("Running event loop");
+        }
+        // Initialization
+        self.results = TestResult { 
             simulated_result: false,
             simulated_cycles: 0,
             cycles_busy: 0,
             cycles_idle: 0,
         };
-        let activated: Vec<(u64, NodeId)> = self.arena.nodes.iter()
-            .filter(|node| node.state != NodeState::Sleep)
-            .map(|n| (n.local_time, n.id))
-            .collect();
-        let mut activated = BinaryHeap::from(activated);
+        let mut activated = BinaryHeap::new();
+        
+        // Kickstart the reaction
+        let start_node = self.arena.get_node_mut(start_point);
+        start_node.activate();
+        self.results.cycles_busy += start_node.local_time;
+        self.retire_node(start_point, &mut activated);
+        // exit(1);
 
         // Main Event loop
-        while activated.len() > 0 {
-            let (local_time, id) = activated.pop().unwrap();
+        while let Some((Reverse(local_time), id)) = activated.pop() {
+            if DEBUG_PRINT {
+                println!("Activating node {}", id);
+            }
             let current_state = &self.arena.get_node(id).state;
 
             let node = self.arena.get_node(id);
             // Perform action depending on the state
             match node.state {
-                NodeState::Busy => {
+                NodeState::Busy => {  // maybe rename this
                     let node = self.arena.get_node_mut(id);
+                    let start_time = node.local_time;
                     node.retry();
+                    self.results.cycles_busy += node.local_time - start_time;
                 }
                 NodeState::Idle => {  // Look to neighbors for fork
                     if let Some(fork) = self.create_fork(id, local_time) {
+                        self.results.cycles_idle += fork.fork_time - local_time;
                         let node = self.arena.get_node_mut(id);
+                        assert!(&fork.fork_time > &node.local_time, "Fork received before done!");
                         node.receive_fork(fork);
                     } else {    // become sleepy as no neighbors have anything at this time
                         let node = self.arena.get_node_mut(id);
@@ -194,31 +208,40 @@ impl Network {
             }
 
             // figure out what to do with the node next
-            let node = self.arena.get_node(id);
-            match node.state {
-                NodeState::Sleep => {}  // Do nothing, don't check on this until something wakes it up
-                NodeState::Busy => {    // Busy nodes should resume once we've caught back to their local time
-                    activated.push((node.local_time, id));
-
-                    // Back sure to activate the nodes neighboring
-                    let neighbors: Vec<NodeId> = self.arena.get_neighbors(id).iter().copied().collect();
-                    for &neighbor_id in &neighbors {
-                        let neighbor_state = &self.arena.get_node(neighbor_id).state;
-                        if *neighbor_state == NodeState::Sleep {
-                            let neighbor = self.arena.get_node_mut(neighbor_id);
-                            neighbor.state = NodeState::Idle;
-                        }
-                    }
-                }
-                _ => {}
-            }
+            self.retire_node(id, &mut activated)
         }
         // Problem is UNSAT (default result) as nothing through SAT before problem terminated
     }
+    
+    fn retire_node(&mut self, id: NodeId, activated: &mut BinaryHeap<(Reverse<Time>, NodeId)>) {
+        let node = self.arena.get_node(id);
+        match node.state {
+            NodeState::Sleep => {
+                if DEBUG_PRINT {
+                    println!("Sleeping node {}", id);
+                }
+            }  // Do nothing, don't check on this until something wakes it up
+            NodeState::Busy => {    // Busy nodes should resume once we've caught back to their local time
+                activated.push((Reverse(node.local_time), id));
 
-    fn create_fork(&self, id: NodeId, local_time: u64) -> Option<Fork> {
-        // TODO: also modify the stolen assignment from Speculative cause to fork cause
-        // TODO: also add a time into the fork
+                // Back sure to activate the nodes neighboring
+                let neighbors: Vec<NodeId> = self.arena.get_neighbors(id).iter().copied().collect();
+                for &neighbor_id in &neighbors {
+                    let neighbor_state = &self.arena.get_node(neighbor_id).state;
+                    if *neighbor_state == NodeState::Sleep {
+                        let neighbor = self.arena.get_node_mut(neighbor_id);
+                        neighbor.state = NodeState::Idle;
+                        activated.push((Reverse(neighbor.local_time), neighbor_id));
+                    }
+                }
+            }
+            NodeState::Idle | NodeState::SAT => {
+                activated.push((Reverse(node.local_time), id));
+            }
+        }
+    }
+
+    fn create_fork(&mut self, id: NodeId, local_time: Time) -> Option<Fork> {
         let neighbors = self.arena.get_neighbors(id);
         let search = neighbors.iter()
             .map(|n| {
@@ -227,28 +250,41 @@ impl Network {
                     .position(|assignment| assignment.cause == AssignmentCause::Speculative
                             && assignment.time >= local_time);
                 if let Some(best_idx) = best_idx {
-                    Some((*n, best_idx, &mut neighbor.assignment_history[best_idx]))
+                    Some((*n, best_idx, &neighbor.assignment_history[best_idx]))
                 } else {
                     None
                 }
         })
-            .filter(|assignment| assignment.is_some())
-            .map(|assignment| assignment.unwrap())
+            .filter(|search| search.is_some())
+            .map(|search| search.unwrap())
             .min_by(|(_,_,a), (_,_,b)|
                 a.time.cmp(&b.time));
-        if let Some((neighbor_id, best_idx, assignment)) = search {
+        if let Some((neighbor_id, best_idx, _)) = search {
+            let neighbor = self.arena.get_node_mut(neighbor_id);
+            let mut variable_assignments = neighbor.assignments.clone();
+            for VariableAssignment { var_id, .. } in &neighbor.assignment_history[best_idx+1..] {
+                variable_assignments[*var_id as usize] = None;
+            }
+            let assignment = &mut neighbor.assignment_history[best_idx];
+            assert!(assignment.cause == AssignmentCause::Speculative, "Assignment cause is not speculative");
             assignment.cause = AssignmentCause::Fork;
-            
+            let fork_time = assignment.time + self.fork_delay;
+            variable_assignments[assignment.var_id as usize] = Some(!assignment.assignment);
+            assert!(neighbor.assignment_history[best_idx].cause == AssignmentCause::Fork, "Assignment cause is not fork");
+            Some(Fork{
+                variable_assignments,
+                fork_time
+            })
         } else {
             None
         }
     }
     pub fn test_satisfiability(&mut self) -> TestResult {
-        { 
-            self.arena.get_node_mut(0).activate(); 
+        if DEBUG_PRINT {
+            println!("Testing satisfiability");
         }
-        self.run_event_loop();
-        // println!("Result: {:?}", self.results);
+        self.run_event_loop(0);
+        println!("Result: {:?}", self.results);
         self.results.clone()
     }
 

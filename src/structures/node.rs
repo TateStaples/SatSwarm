@@ -13,7 +13,8 @@ use std::collections::{HashSet, VecDeque};
 // use stp, fmt::Deug};
 use std::fmt::Debug;
 use rustsat::types::Var;
-use crate::structures::clause_table::{ProblemState, TermState};
+use crate::structures::clause_table::{ClauseIdx, ProblemState, TermState};
+use crate::structures::util_types::Time;
 use super::{clause_table::ClauseTable, util_types::{NodeId, VarId, CLAUSE_LENGTH, DEBUG_PRINT}};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,14 +28,6 @@ pub enum NodeState {
     /// DONE. Has solved the problem!
     SAT
 }
-/// How deep into the problem this variable is assigned
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SpeculativeDepth { 
-    /// The variable is assigned at a certain depth with a certain assignment
-    Depth(VarId, bool),
-    /// The variable is unassigned
-    Unassigned
-}
 
 /// Label of how the value of a variable was assigned
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -46,16 +39,17 @@ pub enum AssignmentCause {
     /// Assignment was guessed and might not be correct
     Speculative,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariableAssignment {
     pub var_id: VarId,
     pub assignment: bool,
-    pub time: u64,
+    pub time: Time,
     pub cause: AssignmentCause
 }
-
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Fork {
-    variable_assignments: Vec<Option<bool>>,  // TODO: either copy state or edit from diff in variable assignments (future optimization)
-    fork_time: u64,
+    pub variable_assignments: Vec<Option<bool>>,  // TODO: either copy state or edit from diff in variable assignments (future optimization)
+    pub fork_time: Time,
 }
 pub struct Node {
     /// Unique identifier for the node.
@@ -65,27 +59,23 @@ pub struct Node {
     pub table: ClauseTable,
     /// History of variable assignments.
     pub assignment_history: Vec<VariableAssignment>,
+    /// What variables (indexed by VarId) are assigned and to what
+    // TODO: should probably change TermState to also be Option<bool>
     pub assignments: Vec<Option<bool>>,
     /// Tracks unit propagation assignments.
     unit_propagation: Vec<VariableAssignment>,
     /// The last updated clock cycle for the node.
-    pub local_time: u64,
-
+    pub local_time: Time,
     // ----- configs ----- // 
     /// Number of clauses checked per clock cycle.
     parallel_clauses: usize,
     /// Number of pipeline stages available at a given time.
     cycles_per_eval: usize,
 }
-
-
-// TODO: update SAT to be when all variables are set (this should be a rare case)
 impl Node {
-    
-    /// Creates a new node with given arguments
-    // FIXME: this constructor need to be updated
     pub fn new(id: NodeId, table: ClauseTable, parallel_clauses: usize, cycles_per_eval: usize) -> Self {
         let vars = table.number_of_vars();
+        // println!("Configs: parallel_clauses: {}, cycles_per_eval: {}", parallel_clauses, cycles_per_eval);
         Node {
             id,
             state: NodeState::Sleep,
@@ -98,24 +88,22 @@ impl Node {
             cycles_per_eval,
         }
     }
-    
-
-    
     /// Next speculative variable to decide
     /// Currently using the first (phonetically) unassigned variable
     /// TODO: Correct to Shaan's first by appearance unassigned variable
-    fn variable_decision(&self) -> Option<usize>{
+    fn variable_decision(&self) -> Option<usize> {
         self.assignments.iter().position(|x| x.is_none())
     }
-
-
     // ----- run ----- //
+    /// The call to the first one. Doesn't start in backtracking or idle mode
     pub fn activate(&mut self) {
         self.branch();
     }
     /// Called by the node upon UNSAT with a certain >0 depth. Undoes speculative assignment and clears its implications
     pub fn retry(&mut self) {
-        // TODO: backtrack should take some time (sounds like 1 pass over the clauses)
+        if DEBUG_PRINT {
+            println!("Node {} is retrying", self.id);
+        }
         self.unit_propagation.clear();
         while let Some(assignment) = self.assignment_history.pop() {
             let VariableAssignment { var_id, assignment, cause, .. } = assignment;
@@ -133,21 +121,26 @@ impl Node {
         }
     }
     pub fn receive_fork(&mut self, fork: Fork) {
+        if DEBUG_PRINT {
+            println!("Node {} is receiving fork {:?}", self.id, fork);
+        }
         let Fork {
             variable_assignments,
             fork_time
         } = fork;
-        for (idx, (mine, new)) in self.assignments.iter().zip(variable_assignments.iter()).enumerate() {
-            if mine != new {
-                let idx = idx as VarId;
-                if let Some(assignment) = new {
-                    self.substitute(idx, *assignment, AssignmentCause::Fork);
-                }
-            }
+        let changes: Vec<_> = variable_assignments.iter().zip(self.assignments.iter())
+            .enumerate()
+            .filter(|&(_, (mine, new))| mine != new && new.is_some())
+            .map(|(idx, (_, new))| (idx as VarId, new.unwrap()))
+            .collect();
+        for (var_id, assignment) in changes {
+            // TODO: this should take one complete pass, and you should check each loop through
+            self.substitute(var_id, assignment, AssignmentCause::Fork);
         }
         self.assignment_history.clear();
         self.unit_propagation.clear();
         self.local_time = fork_time;
+        self.branch();
     }
 
     // ----- branching ----- //
@@ -156,18 +149,28 @@ impl Node {
         loop {
             if let Some(assignment) = self.unit_propagation.pop() {
                 let VariableAssignment { var_id, assignment, .. } = assignment;
+                if DEBUG_PRINT {
+                    println!("Node {} is unit propagating {} for var {}", self.id, assignment, var_id);
+                }
                 if self.assignments[var_id as usize].is_some() {
                     if self.assignments[var_id as usize].unwrap() == assignment { continue; }
                     // self.unsat();
                     break;
                 }
+                // if DEBUG_PRINT {
+                //     println!("Node {} is unit propagating {} for var {}", self.id, assignment, var_id);
+                // }
                 if self.substitute(var_id, assignment, AssignmentCause::UnitPropagation) {
                     // UNSAT
+                    break;
                 }
             } else if let Some(var) = self.variable_decision() {
+                if DEBUG_PRINT {
+                    println!("Node {} is speculatively branching on var {}", self.id, var);
+                }
                 // branching unknown variable
                 let var = var as VarId;
-               
+                self.substitute(var, false, AssignmentCause::Speculative);
             } else {
                 if DEBUG_PRINT {
                     println!("Node {} is SAT", self.id);
@@ -181,7 +184,6 @@ impl Node {
 
     // ----- processing ----- //
     fn reset(&mut self, var: VarId) {
-        // TODO: discuss with Shaan what this looks like in hardware and how much time it takes
         let lookup = &self.table.transpose[var as usize];
         self.assignments[var as usize] = None;
         for (clause_idx, term_idx) in lookup.pos.iter() {
@@ -204,7 +206,8 @@ impl Node {
         self.assignments[var as usize] = Some(assignment);
 
         let Self {
-            table, unit_propagation, ..
+            table, unit_propagation,
+            local_time, parallel_clauses, cycles_per_eval, ..
         } = self;
         let lookup = &table.transpose[var as usize];
         if assignment == true {
@@ -213,16 +216,18 @@ impl Node {
             }
             for (clause_idx, term_idx) in lookup.neg.iter() {
                 table.problem_state[*clause_idx][*term_idx] = TermState::False;
-                if !Self::check_clause(table, *clause_idx, unit_propagation) {
+                if Self::clause_unsat(table, *clause_idx, unit_propagation) {
                     // UNSAT!
+                    *local_time += Self::reach_time(*clause_idx, *parallel_clauses, *cycles_per_eval);
                     return true;
                 }
             }
         } else {
             for (clause_idx, term_idx) in lookup.pos.iter() {
                 table.problem_state[*clause_idx][*term_idx] = TermState::False;
-                if !Self::check_clause(table, *clause_idx, unit_propagation) {
+                if Self::clause_unsat(table, *clause_idx, unit_propagation) {
                     // UNSAT!
+                    *local_time += Self::reach_time(*clause_idx, *parallel_clauses, *cycles_per_eval);
                     return true;
                 }
             }
@@ -231,35 +236,53 @@ impl Node {
             }
         }
         // No fault
+        *local_time += Self::reach_time(table.number_of_clauses(), *parallel_clauses, *cycles_per_eval);
         false
     }
-
-    fn check_clause(table: &ClauseTable, clause_idx: usize, unit_propagation: &mut Vec<VariableAssignment>) -> bool {
+    fn clause_unsat(table: &ClauseTable, clause_idx: usize, unit_propagation: &mut Vec<VariableAssignment>) -> bool {
         let current_clause = &table.problem_state[clause_idx];
         let count = current_clause.iter().filter(|&state| *state == TermState::Symbolic).count();
         if count == 0 && current_clause.iter().all(|state| *state == TermState::False) {
             // UNSAT
-            return false;
-        } else if count == 1 && !current_clause.iter().any(|state| *state == TermState::True){
+            return true;
+        } else if count == 1 && !current_clause.iter().any(|state| *state == TermState::True) {
             // unit propagation
             let term_idx = current_clause.iter().position(|state| *state == TermState::Symbolic).unwrap();
             let symbol = &table.symbolic_table[clause_idx][term_idx];
             unit_propagation.push(
                 VariableAssignment {
-                    var_id: term_idx as VarId,
+                    var_id: symbol.var,
                     assignment: !symbol.negated,
                     time: 0,
                     cause: AssignmentCause::UnitPropagation,
                 }
             );
         }
-        true
+        false
     }
 
-} 
+    fn problem_unsat(&mut self) -> bool {
+        let Self {
+            table, unit_propagation,
+            parallel_clauses, cycles_per_eval, local_time, ..
+        } = self;
+        for clause_idx in 0..table.number_of_clauses() {
+            if Self::clause_unsat(table, clause_idx, unit_propagation) {
+                *local_time += Self::reach_time(clause_idx, *parallel_clauses, *cycles_per_eval);
+                return true;
+            }
+        }
+        *local_time += Self::reach_time(table.number_of_clauses(), *parallel_clauses, *cycles_per_eval);
+        false
+    }
+    fn reach_time(clause_idx: usize, parallel_clauses: usize, cycles_per_eval: usize) -> Time {
+        (Self::div_up(clause_idx, parallel_clauses) * cycles_per_eval) as Time
+    }
+    fn div_up(a: usize, b: usize) -> usize { (a + (b - 1)) / b }
+}
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Node id: {}, state: {:?}, assignments: {:?}", self.id, self.state, self.assignments)
+        write!(f, "Node id: {}, state: {:?}, time: {}", self.id, self.state, self.local_time)
     }
     
 }

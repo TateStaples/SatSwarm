@@ -7,6 +7,7 @@ use std::fs::OpenOptions;
 use crate::structures::clause_table::ClauseTable;
 use crate::structures::minisat::minisat_table;
 use crate::structures::network::Network;
+use crate::structures::util_types::Time;
 
 pub fn parse_topology(topology_str: &str, num_nodes: usize) -> Topology {
     match topology_str {
@@ -33,9 +34,9 @@ pub enum Topology {
 #[derive(Default, Clone, Debug)]
 pub struct TestResult {
     pub simulated_result: bool,
-    pub simulated_cycles: u64,
-    pub cycles_busy: u64,
-    pub cycles_idle: u64,
+    pub simulated_cycles: Time,
+    pub cycles_busy: Time,
+    pub cycles_idle: Time,
 }
 pub struct TestLog {
     pub test_result: TestResult,

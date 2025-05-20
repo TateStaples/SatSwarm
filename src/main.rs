@@ -15,9 +15,9 @@ fn main() {
     // build_random_testset(51, 10, 3, 3);
     // return;
     let args: Vec<String> = env::args().collect();
-    let mut num_nodes: usize = 100; // Default value for --num_nodes
+    let mut num_nodes: usize = 4; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
-    let mut test_path = String::from("tests"); // Default value for --test_path
+    let mut test_path = String::from("tests/selected"); // Default value for --test_path
     let mut node_bandwidth = 100; // Default value for --node_bandwidth
     let mut num_vars = 50; // Default value for --num_vars
 
@@ -110,7 +110,7 @@ fn main() {
         test_dir: test_path.clone(),
     };
     let log_file_path = format!("logs/{}.csv", config_name(&config));
-    if std::path::Path::new(&log_file_path).exists() {
+    if std::path::Path::new(&log_file_path).exists() && false {
         eprintln!("Configuration with name '{}' already exists. Exiting to avoid overwriting logs.", log_file_path);
         std::process::exit(1);
     }

@@ -1,0 +1,6 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth,Number of Variables
+tests/random/unsat/dummy_unsat.cnf,false,5750,false,0,0,0,100,"Torus(10, 10)",100,1
+tests/random/unsat/dummy_unsat.cnf,false,17542,false,0,0,1,100,"Torus(10, 10)",100,1
+tests/random/unsat/dummy_unsat.cnf,false,17250,false,0,0,1,100,"Torus(10, 10)",100,1
+tests/random/unsat/dummy_unsat.cnf,false,18625,false,0,0,1,100,"Torus(10, 10)",100,1
+tests/random/unsat/dummy_unsat.cnf,false,17542,false,0,0,1,100,"Torus(10, 10)",100,1

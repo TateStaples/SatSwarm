@@ -5,6 +5,7 @@ use std::rc::Rc;
 use super::util_types::{NodeId, VarId, CLAUSE_LENGTH}; 
 /// The symbolic symbol and its negation state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub struct SymbolicTerm {
     /// The variable id of the term
     pub var: VarId,
@@ -52,6 +53,7 @@ pub struct ClauseTable {
 }
 
 impl ClauseTable {
+    /// Simple Testing to make sure my code isn't obviously wrong
     fn check_table(&self, expected_clause_count: usize, expected_var_count: usize) {
         // There should be the same number of entries in the transpose table as in the problem state
         assert_eq!(
@@ -64,8 +66,9 @@ impl ClauseTable {
         assert_eq!(self.transpose.len(), expected_var_count, "Variable count does not match header");
     }
 
+    /// From the transpose table create the symbol table
     fn build_symbolic_table(tranpose: &TransposeTable, num_clauses: usize) -> Vec<[SymbolicTerm; 3]> {
-        let mut symbolic_table = vec![[SymbolicTerm { var: 0, negated: false }; CLAUSE_LENGTH]; num_clauses];
+        let mut symbolic_table = vec![[Default::default(); CLAUSE_LENGTH]; num_clauses];
         for (var_id, term_lookup) in tranpose.iter().enumerate() {
             for (clause_idx, term_idx) in term_lookup.pos.iter() {
                 symbolic_table[*clause_idx][*term_idx] = SymbolicTerm { var: var_id as VarId, negated: false };
@@ -76,32 +79,7 @@ impl ClauseTable {
         }
         symbolic_table
     }
-    pub fn random(num_clauses: usize, num_vars: u8) -> Self {
-        let problem_state: ProblemState = vec![[TermState::Symbolic; CLAUSE_LENGTH]; num_clauses+1];
-        // TODO: handle var 0 for stated false (handle this for minisat and such)
-        let mut transpose = vec![TermLookup { pos: Vec::new(), neg: Vec::new() }; num_vars as usize + 1];
-        for clause_idx in 0..num_clauses {
-            // let mut clause = [(Term{var: 0, negated: false}, TermState::Symbolic); CLAUSE_LENGTH];
-            for term_idx in 0..CLAUSE_LENGTH {
-                let var = ((rand::random::<u8>() % num_vars) + 1) as usize;  // FIXME: 1-indexed because of the way I am using the 0 var
-                let negated = rand::random::<bool>();
-                if negated {
-                    transpose[var].neg.push((clause_idx, term_idx));
-                } else {
-                    transpose[var].pos.push((clause_idx, term_idx));
-                }
-            }
-        }
-        let num_clauses = problem_state.len();
-        let symbolic_table = Self::build_symbolic_table(&transpose, num_clauses);
-        let transpose = Rc::new(transpose); let symbolic_table = Rc::new(symbolic_table);
-        Self {
-            transpose,
-            symbolic_table,
-            problem_state,
-        }
-    }
-
+    
     /// Load a file and return a new ClauseTable with expected SAT result
     /// Example File Format
     /// ```text
@@ -115,6 +93,7 @@ impl ClauseTable {
     /// -71  -49  46  0
     /// ```
     pub fn load_file(path: PathBuf) -> (Self, bool) {
+        let mut pure_var = None;  // do we need to add an extra variable that is always false (used for problems where clauses can have <CLAUSE_LENGTH terms)
         // Config parameters
         let mut clause_index = 0;
         let mut num_clauses = 0;
@@ -135,7 +114,7 @@ impl ClauseTable {
                 var_count = parts.next().unwrap().parse().unwrap();
                 assert!(var_count < u8::MAX as i32, "Too many variables for u8");
                 num_clauses = parts.next().unwrap().parse().unwrap();
-                transpose = vec![TermLookup { pos: Vec::new(), neg: Vec::new() }; var_count as usize + 1];  // FIXME: 1-indexed because of the way I am using the 0 var
+                transpose = vec![TermLookup { pos: Vec::new(), neg: Vec::new() }; var_count as usize];
             } else if line.starts_with("c") {  // Skip comments
                 continue;
             } else if line.starts_with("%") {  // end this file
@@ -143,12 +122,23 @@ impl ClauseTable {
             } else {  // Parse the clauses
                 let parts = line.split_whitespace();
                 for (term_index, part) in parts.enumerate() {
-                    assert!(term_index < CLAUSE_LENGTH, "Only 3SAT is supported");
                     let num: i32 = part.parse().unwrap();
                     if num == 0 {  // End of clause
+                        if term_index < CLAUSE_LENGTH {
+                            if pure_var.is_none() {
+                                pure_var = Some(var_count as usize);
+                                var_count += 1;
+                                transpose.push(TermLookup { pos: Vec::new(), neg: Vec::new() });
+                            }
+                            for _ in term_index..CLAUSE_LENGTH {
+                                transpose[var_count as usize - 1].pos.push((clause_index, term_index));
+                            }
+                        }
                         break;
-                    } else {
-                        let var = num.abs() as usize;
+                    } 
+                    else {
+                        assert!(term_index < CLAUSE_LENGTH, "Only 3SAT is supported");
+                        let var = num.abs() as usize -1;
                         let neg = num < 0;
                         assert!(var <= var_count as usize, "Variable {} is out of bounds", var);
                         if neg {
@@ -161,17 +151,24 @@ impl ClauseTable {
                 clause_index += 1;
             }
         }
-        
+        let mut problem_state: ProblemState = vec![[TermState::Symbolic; CLAUSE_LENGTH]; num_clauses];
+        if let Some(pure_var) = pure_var {
+            let neg = &mut transpose[pure_var].neg;
+            neg.push((num_clauses, 0));
+            neg.push((num_clauses, 1));
+            neg.push((num_clauses, 2));
+            problem_state.push([TermState::Symbolic; CLAUSE_LENGTH]);
+        }
 
         // clauses.push([(Term{var: 0, negated: true}, TermState::Symbolic); CLAUSE_LENGTH]);  // FIXME: dummy clause
-        let symbolic_table = Self::build_symbolic_table(&transpose, num_clauses);
+        let symbolic_table = Self::build_symbolic_table(&transpose, problem_state.len());
         let transpose = Rc::new(transpose); let symbolic_table = Rc::new(symbolic_table);
         let s = Self {
             transpose,
             symbolic_table,
-            problem_state: vec![[TermState::Symbolic; CLAUSE_LENGTH]; num_clauses+1],
+            problem_state,
         };
-        s.check_table(num_clauses, var_count as usize);
+        s.check_table(num_clauses + (if pure_var.is_some() {1} else {0}), var_count as usize);
         (s, sat)
     }
     
