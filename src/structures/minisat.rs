@@ -23,8 +23,8 @@ pub fn minisat_file(path: PathBuf) -> (bool, Duration) {
 }
 pub fn minisat_table(table: &ClauseTable) -> (bool, Duration) {
     let mut instance: SatInstance = SatInstance::new();
-    for clause in table.clause_table.iter() {
-        let clause: Clause = clause.iter().map(|&(x, _)| Lit::new(x.var as u32, x.negated)).collect();
+    for clause in table.symbolic_table.iter() {
+        let clause: Clause = clause.iter().map(|&(x)| Lit::new(x.var as u32, x.negated)).collect();
         instance.add_clause(clause);
     }
     let mut solver: Minisat = rustsat_minisat::core::Minisat::default();
