@@ -1,0 +1,3 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth,Number of Variables
+tests/satlib/unsat/uuf125-039.cnf,false,7577208,false,0,111722683,2485051,4,"Torus(2, 2)",100,125
+tests/satlib/unsat/uuf125-011.cnf,false,6244583,false,0,71888888,1211945,4,"Torus(2, 2)",100,125

@@ -89,7 +89,9 @@ pub fn run_workload(test_path: String, config: TestConfig) {
             println!("Running test: {:?}", f_copy);
             let (expected_result, minisat_speed) = minisat_table(&clause_table);
             let mut simulation = Network::generate(clause_table, &config);
+            let start_time = std::time::Instant::now();
             let result = simulation.test_satisfiability();
+            println!("Test took {} s", start_time.elapsed().as_secs_f64());
             assert!(result.simulated_result == expected_result, "Test failed: expected {}, got {}", expected_result, result.simulated_result);
             let test_log = TestLog {
                 test_result: result,

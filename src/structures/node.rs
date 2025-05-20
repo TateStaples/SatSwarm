@@ -113,7 +113,7 @@ impl Node {
                     self.branch();
                     break;
                 }
-                _ => { self.reset(var_id); }
+                _ => { self.reset(var_id, TermState::Symbolic); }
             }
         }
         if self.assignment_history.is_empty() {
@@ -128,19 +128,25 @@ impl Node {
             variable_assignments,
             fork_time
         } = fork;
-        let changes: Vec<_> = variable_assignments.iter().zip(self.assignments.iter())
+        let changes: Vec<_> = self.assignments.iter().zip(variable_assignments.iter())
             .enumerate()
-            .filter(|&(_, (mine, new))| mine != new && new.is_some())
-            .map(|(idx, (_, new))| (idx as VarId, new.unwrap()))
+            .filter(|&(_, (mine, new))| mine != new)
+            .map(|(idx, (_, new))| (idx as VarId, new))
             .collect();
         for (var_id, assignment) in changes {
-            // TODO: this should take one complete pass, and you should check each loop through
-            self.substitute(var_id, assignment, AssignmentCause::Fork);
+            match assignment {
+                Some(true) => self.reset(var_id, TermState::True),
+                Some(false) => self.reset(var_id, TermState::False),
+                None => self.reset(var_id, TermState::Symbolic),
+            }
         }
+        assert!(self.assignments == variable_assignments);
         self.assignment_history.clear();
         self.unit_propagation.clear();
         self.local_time = fork_time;
-        self.branch();
+        if !self.problem_unsat() {
+            self.branch();
+        }
     }
 
     // ----- branching ----- //
@@ -149,20 +155,17 @@ impl Node {
         loop {
             if let Some(assignment) = self.unit_propagation.pop() {
                 let VariableAssignment { var_id, assignment, .. } = assignment;
-                if DEBUG_PRINT {
-                    println!("Node {} is unit propagating {} for var {}", self.id, assignment, var_id);
-                }
                 if self.assignments[var_id as usize].is_some() {
                     if self.assignments[var_id as usize].unwrap() == assignment { continue; }
                     // self.unsat();
                     break;
                 }
-                // if DEBUG_PRINT {
-                //     println!("Node {} is unit propagating {} for var {}", self.id, assignment, var_id);
-                // }
+                if DEBUG_PRINT {
+                    println!("Node {} is unit propagating {} for var {}", self.id, assignment, var_id);
+                }
                 if self.substitute(var_id, assignment, AssignmentCause::UnitPropagation) {
                     // UNSAT
-                    break;
+                    break
                 }
             } else if let Some(var) = self.variable_decision() {
                 if DEBUG_PRINT {
@@ -183,18 +186,27 @@ impl Node {
 
 
     // ----- processing ----- //
-    fn reset(&mut self, var: VarId) {
+    fn reset(&mut self, var: VarId, value: TermState) {
         let lookup = &self.table.transpose[var as usize];
-        self.assignments[var as usize] = None;
+        let negated = match value {
+            TermState::True => TermState::False,
+            TermState::False => TermState::True,
+            TermState::Symbolic => TermState::Symbolic,
+        };
+        
+        self.assignments[var as usize] = match value {
+            TermState::True => Some(true),
+            TermState::False => Some(false),
+            TermState::Symbolic => None,
+        };
         for (clause_idx, term_idx) in lookup.pos.iter() {
-            self.table.problem_state[*clause_idx][*term_idx] = TermState::Symbolic;
+            self.table.problem_state[*clause_idx][*term_idx] = value;
         }
         for (clause_idx, term_idx) in lookup.neg.iter() {
-            self.table.problem_state[*clause_idx][*term_idx] = TermState::Symbolic;
+            self.table.problem_state[*clause_idx][*term_idx] = negated;
         }
     }
     fn substitute(&mut self, var: VarId, assignment: bool, cause: AssignmentCause) -> bool {
-        // FIXME: where should time updating be handled - probably here
         self.assignment_history.push(
             VariableAssignment {
                 var_id: var,
@@ -261,7 +273,7 @@ impl Node {
         false
     }
 
-    fn problem_unsat(&mut self) -> bool {
+    pub fn problem_unsat(&mut self) -> bool {
         let Self {
             table, unit_propagation,
             parallel_clauses, cycles_per_eval, local_time, ..
@@ -279,6 +291,36 @@ impl Node {
         (Self::div_up(clause_idx, parallel_clauses) * cycles_per_eval) as Time
     }
     fn div_up(a: usize, b: usize) -> usize { (a + (b - 1)) / b }
+    
+    pub fn print_model(&self) {
+        for clause_idx in 0..self.table.number_of_clauses() {
+            for term_idx in 0..CLAUSE_LENGTH {
+                let symbol = self.table.symbolic_table[clause_idx][term_idx];
+                let value = self.table.problem_state[clause_idx][term_idx];
+                let assigned_value = self.assignments[symbol.var as usize];
+                match assigned_value { 
+                    Some(a) => if a == symbol.negated { assert_eq!(value, TermState::False) } else { assert_eq!(value, TermState::True) },
+                    None => {}
+                }
+                if symbol.negated {print!("¬")}
+                let value_char = match value { 
+                    TermState::True => 'T',
+                    TermState::False => 'F',
+                    TermState::Symbolic => '?',
+                };
+                print!("{}({})\t", symbol.var, value_char);
+            }
+            println!();
+        }
+    }
+    
+    fn term_state_to_option(state: TermState) -> Option<bool> {
+        match state { 
+            TermState::True => Some(true),
+            TermState::False => Some(false),
+            TermState::Symbolic => None,
+        }
+    }
 }
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

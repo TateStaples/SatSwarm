@@ -157,14 +157,14 @@ impl Network {
             println!("Running event loop");
         }
         // Initialization
-        self.results = TestResult { 
+        self.results = TestResult {
             simulated_result: false,
             simulated_cycles: 0,
             cycles_busy: 0,
             cycles_idle: 0,
         };
         let mut activated = BinaryHeap::new();
-        
+
         // Kickstart the reaction
         let start_node = self.arena.get_node_mut(start_point);
         start_node.activate();
@@ -177,7 +177,6 @@ impl Network {
             if DEBUG_PRINT {
                 println!("Activating node {}", id);
             }
-            let current_state = &self.arena.get_node(id).state;
 
             let node = self.arena.get_node(id);
             // Perform action depending on the state
@@ -200,6 +199,11 @@ impl Network {
                     }
                 }
                 NodeState::SAT => {
+                    let node = self.arena.get_node_mut(id);
+                    // println!("Found SAT!");
+                    // println!("Node Assignments: {:?}", node.assignments.iter().enumerate().collect::<Vec<_>>());
+                    // node.print_model();
+                    // assert!(!node.problem_unsat(), "Invalid SAT reached!");
                     self.results.simulated_result = true;
                     self.results.simulated_cycles = local_time;
                     break;  // we are done
@@ -212,7 +216,7 @@ impl Network {
         }
         // Problem is UNSAT (default result) as nothing through SAT before problem terminated
     }
-    
+
     fn retire_node(&mut self, id: NodeId, activated: &mut BinaryHeap<(Reverse<Time>, NodeId)>) {
         let node = self.arena.get_node(id);
         match node.state {

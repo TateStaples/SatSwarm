@@ -1,0 +1,12 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth,Number of Variables
+tests/satlib/sat/uf150-017.cnf,true,338875,true,1635932,6542641,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-016.cnf,true,6136458,true,22827685,91310042,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-017.cnf,true,346167,true,1635932,6542641,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-016.cnf,true,5939416,true,22827685,91310042,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-028.cnf,true,12048917,true,67791914,270115242,369482,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-014.cnf,true,2979042,true,46435976,185743357,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-015.cnf,true,18295500,true,25423463,101692232,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-029.cnf,true,6873375,true,2336714,9345710,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-011.cnf,true,670667,true,3985833,15942600,18,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-039.cnf,true,724458,true,86007730,343248817,280687,4,"Torus(2, 2)",100,150
+tests/satlib/sat/uf150-038.cnf,true,2002084,true,10452841,41809882,18,4,"Torus(2, 2)",100,150
