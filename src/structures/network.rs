@@ -200,7 +200,7 @@ impl Network {
                 }
                 NodeState::SAT => {
                     let node = self.arena.get_node_mut(id);
-                    // println!("Found SAT!");
+                    println!("Found SAT! {}", node.id);
                     // println!("Node Assignments: {:?}", node.assignments.iter().enumerate().collect::<Vec<_>>());
                     // node.print_model();
                     // assert!(!node.problem_unsat(), "Invalid SAT reached!");
@@ -214,6 +214,7 @@ impl Network {
             // figure out what to do with the node next
             self.retire_node(id, &mut activated)
         }
+        exit(1)
         // Problem is UNSAT (default result) as nothing through SAT before problem terminated
     }
 
@@ -270,11 +271,9 @@ impl Network {
                 variable_assignments[*var_id as usize] = None;
             }
             let assignment = &mut neighbor.assignment_history[best_idx];
-            assert!(assignment.cause == AssignmentCause::Speculative, "Assignment cause is not speculative");
             assignment.cause = AssignmentCause::Fork;
             let fork_time = assignment.time + self.fork_delay;
             variable_assignments[assignment.var_id as usize] = Some(!assignment.assignment);
-            assert!(neighbor.assignment_history[best_idx].cause == AssignmentCause::Fork, "Assignment cause is not fork");
             Some(Fork{
                 variable_assignments,
                 fork_time

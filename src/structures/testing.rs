@@ -108,9 +108,11 @@ pub fn run_workload(test_path: String, config: TestConfig) {
 }
 pub fn config_name(config: &TestConfig) -> String {
     let test_name = config.test_dir.split('/').last().unwrap_or("unknown");
+    let current_time = std::time::SystemTime::now();
+    let current_time = current_time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() % 1_000_000;
     format!(
-        "{}-{:?}-{}-{}-{}",
-        test_name, config.topology, config.num_nodes, config.node_bandwidth, config.num_vars
+        "{}-{:?}-{}-{}-{}_{}",
+        test_name, config.topology, config.num_nodes, config.node_bandwidth, config.num_vars, current_time
     )
 }
 pub fn log_test(test_log: TestLog) {
