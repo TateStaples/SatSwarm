@@ -14,11 +14,11 @@ mod structures;
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests --node_bandwidth 100 --num_vars 50
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut num_nodes: usize = 4; // Default value for --num_nodes
+    let mut num_nodes: usize = 100; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
     let mut test_path = String::from("tests/satlib/sat"); // Default value for --test_path
     let mut node_bandwidth = 100; // Default value for --node_bandwidth
-    let mut num_vars = 175; // Default value for --num_vars
+    let mut num_vars = 200; // Default value for --num_vars
 
     // Parse command-line arguments
     let mut i = 1;
