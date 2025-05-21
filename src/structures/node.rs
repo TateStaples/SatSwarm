@@ -12,6 +12,7 @@ Message types:
 use std::collections::{HashSet, VecDeque};
 // use stp, fmt::Deug};
 use std::fmt::Debug;
+use std::process::exit;
 use rustsat::types::Var;
 use crate::structures::clause_table::{ClauseIdx, ProblemState, TermState};
 use crate::structures::util_types::Time;
@@ -23,8 +24,6 @@ pub enum NodeState {
     Busy, 
     /// Awaiting fork
     Idle,
-    /// Awaiting fork with no active neighbors
-    Sleep,
     /// DONE. Has solved the problem!
     SAT
 }
@@ -78,7 +77,7 @@ impl Node {
         // println!("Configs: parallel_clauses: {}, cycles_per_eval: {}", parallel_clauses, cycles_per_eval);
         Node {
             id,
-            state: NodeState::Sleep,
+            state: NodeState::Idle,
             table,
             assignment_history: vec![],
             assignments: vec![None; vars],
@@ -122,7 +121,7 @@ impl Node {
     }
     pub fn receive_fork(&mut self, fork: Fork) {
         if DEBUG_PRINT {
-            println!("Node {} is receiving fork {:?}", self.id, fork);
+            println!("Node {:?} is receiving fork {:?}", self, fork);
         }
         let Fork {
             variable_assignments,
@@ -161,20 +160,23 @@ impl Node {
                     break;
                 }
                 if DEBUG_PRINT {
-                    println!("Node {} is unit propagating {} for var {}", self.id, assignment, var_id);
+                    println!("Node {:?} is unit propagating {} for var {}", self, assignment, var_id);
                 }
+                self.local_time +=1;
                 if self.substitute(var_id, assignment, AssignmentCause::UnitPropagation) {
                     // UNSAT
                     break
                 }
             } else if let Some(var) = self.variable_decision() {
                 if DEBUG_PRINT {
-                    println!("Node {} is speculatively branching on var {}", self.id, var);
+                    println!("Node {:?} is speculatively branching on var {}", self, var);
                 }
+                self.local_time +=1;
                 // branching unknown variable
                 let var = var as VarId;
                 self.substitute(var, false, AssignmentCause::Speculative);
             } else {
+                self.local_time += 1;
                 if DEBUG_PRINT {
                     println!("Node {} is SAT", self.id);
                 }
@@ -207,6 +209,7 @@ impl Node {
         }
     }
     fn substitute(&mut self, var: VarId, assignment: bool, cause: AssignmentCause) -> bool {
+        let before = self.local_time;
         self.assignment_history.push(
             VariableAssignment {
                 var_id: var,
@@ -249,6 +252,7 @@ impl Node {
         }
         // No fault
         *local_time += Self::reach_time(table.number_of_clauses(), *parallel_clauses, *cycles_per_eval);
+        assert!(*local_time > before);
         false
     }
     fn clause_unsat(table: &ClauseTable, clause_idx: usize, unit_propagation: &mut Vec<VariableAssignment>) -> bool {
@@ -324,7 +328,7 @@ impl Node {
 }
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Node id: {}, state: {:?}, time: {}", self.id, self.state, self.local_time)
+        write!(f, "(id: {} @ time: {})", self.id, self.local_time)
     }
     
 }

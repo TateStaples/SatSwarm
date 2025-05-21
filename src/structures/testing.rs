@@ -52,6 +52,33 @@ pub struct TestConfig {
     pub node_bandwidth: usize,
     pub num_vars: usize,
     pub test_dir: String,
+    pub log_dir: String,
+} impl TestConfig {
+    pub fn new(num_nodes: usize, topology: Topology, node_bandwidth: usize, num_vars: usize, test_dir: String) -> Self {
+        Self {
+            num_nodes,
+            topology: topology.clone(),
+            node_bandwidth,
+            num_vars,
+            test_dir: test_dir.clone(),
+            log_dir: TestConfig::config_name(num_nodes, topology, node_bandwidth, num_vars, test_dir)
+        }
+    }
+
+    fn config_name(num_nodes: usize, topology: Topology, node_bandwidth: usize, num_vars: usize, test_dir: String) -> String {
+        let test_name = test_dir.split('/').last().unwrap_or("unknown");
+        let current_time = std::time::SystemTime::now();
+        let current_time = current_time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() % 1_000_000;
+        let log_path = format!(
+            "logs/{}-{:?}-{}-{}-{}_{}.csv",
+            test_name, topology, num_nodes, node_bandwidth, num_vars, current_time
+        );
+        if std::path::Path::new(&log_path).exists() {
+            eprintln!("Configuration with name '{}' already exists. Exiting to avoid overwriting logs.", log_path);
+            std::process::exit(1);
+        }
+        log_path
+    }
 }
 
 
@@ -109,15 +136,9 @@ pub fn run_workload(test_path: String, config: TestConfig) {
         println!("No tests directory found at: {}", test_path);
     }
 }
-pub fn config_name(config: &TestConfig) -> String {
-    let test_name = config.test_dir.split('/').last().unwrap_or("unknown");
-    format!(
-        "{}-{:?}-{}-{}-{}",
-        test_name, config.topology, config.num_nodes, config.node_bandwidth, config.num_vars
-    )
-}
+
 pub fn log_test(test_log: TestLog) {
-    let log_file_path = format!("logs/{}.csv", config_name(&test_log.config));
+    let log_file_path = &test_log.config.log_dir;
 
     // Create logs directory if it doesn't exist
     if let Err(e) = std::fs::create_dir_all("logs") {
@@ -131,6 +152,7 @@ pub fn log_test(test_log: TestLog) {
         .append(true)
         .open(log_file_path.clone());
 
+    println!("Logging test to: {}", log_file_path);
     match file {
         Ok(file) => {
             let file_is_empty = file.metadata().map(|m| m.len() == 0).unwrap_or(false);

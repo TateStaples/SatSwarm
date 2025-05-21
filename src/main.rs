@@ -7,18 +7,18 @@ use std::fs::OpenOptions;
 use std::process::exit;
 use structures::minisat::minisat_table;
 use structures::{clause_table::ClauseTable, network::Network};
-use crate::structures::testing::{config_name, parse_topology, run_workload, TestConfig};
+use crate::structures::testing::{parse_topology, run_workload, TestConfig};
 
 mod structures;
 
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests --node_bandwidth 100 --num_vars 50
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut num_nodes: usize = 4; // Default value for --num_nodes
+    let mut num_nodes: usize = 256; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
     let mut test_path = String::from("tests/satlib/sat"); // Default value for --test_path
     let mut node_bandwidth = 100; // Default value for --node_bandwidth
-    let mut num_vars = 175; // Default value for --num_vars
+    let mut num_vars = 150; // Default value for --num_vars
 
     // Parse command-line arguments
     let mut i = 1;
@@ -101,18 +101,13 @@ fn main() {
     println!("Topology: {}", topology);
     println!("Test path: {}", test_path);
 
-    let config = TestConfig {
+    let config = TestConfig::new(
         num_nodes,
-        topology: parse_topology(&topology, num_nodes),
+        parse_topology(&topology, num_nodes),
         node_bandwidth,
         num_vars,
-        test_dir: test_path.clone(),
-    };
-    let log_file_path = format!("logs/{}.csv", config_name(&config));
-    if std::path::Path::new(&log_file_path).exists() && false {
-        eprintln!("Configuration with name '{}' already exists. Exiting to avoid overwriting logs.", log_file_path);
-        std::process::exit(1);
-    }
+        test_path.clone(),
+    );
     run_workload(test_path, config);
 
     println!("Done");
