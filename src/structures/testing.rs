@@ -70,7 +70,7 @@ pub struct TestConfig {
         let current_time = std::time::SystemTime::now();
         let current_time = current_time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() % 1_000_000;
         let log_path = format!(
-            "logs/{}-{:?}-{}-{}-{}_{}",
+            "logs/{}-{:?}-{}-{}-{}_{}.csv",
             test_name, topology, num_nodes, node_bandwidth, num_vars, current_time
         );
         if std::path::Path::new(&log_path).exists() {
