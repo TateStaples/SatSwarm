@@ -24,8 +24,6 @@ pub enum NodeState {
     Busy, 
     /// Awaiting fork
     Idle,
-    /// Awaiting fork with no active neighbors
-    Sleep,
     /// DONE. Has solved the problem!
     SAT
 }
@@ -79,7 +77,7 @@ impl Node {
         // println!("Configs: parallel_clauses: {}, cycles_per_eval: {}", parallel_clauses, cycles_per_eval);
         Node {
             id,
-            state: NodeState::Sleep,
+            state: NodeState::Idle,
             table,
             assignment_history: vec![],
             assignments: vec![None; vars],
