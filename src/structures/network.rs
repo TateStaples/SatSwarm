@@ -72,6 +72,8 @@ impl Network {
     pub fn _blank() -> Network {
         Network::build(Arena::new())
     }
+
+    /// Returns a topology of nodes with connections in the form specified
     pub fn generate(clause_table: ClauseTable, config: &TestConfig) -> Network {
         let mut swarm = match config.topology {
             Topology::Grid(rows, cols) => Network::grid(clause_table, rows, cols, config.node_bandwidth),
@@ -283,6 +285,8 @@ impl Network {
             None
         }
     }
+
+    /// Function that runs SAT solver on architecture simulator
     pub fn test_satisfiability(&mut self) -> TestResult {
         if DEBUG_PRINT {
             println!("Testing satisfiability");

@@ -76,6 +76,8 @@ pub fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
     collect_files(std::path::Path::new(test_path), &mut files);
     Some(files)
 }
+
+/// Entry point for running a SAT problem in the simulator
 pub fn run_workload(test_path: String, config: TestConfig) {
     // load test files from the specified path
     if let Some(files) = get_test_files(&test_path) {
@@ -84,6 +86,7 @@ pub fn run_workload(test_path: String, config: TestConfig) {
             let (mut clause_table, _) = ClauseTable::load_file(file);
             // skip if the clause table > 25 or expected result is unsat
             if clause_table.number_of_vars() != config.num_vars {
+                println!("Clause table number of vars ({}) does not match confid num vars ({})", clause_table.number_of_vars(), config.num_vars);
                 continue;
             }
             println!("Running test: {:?}", f_copy);
