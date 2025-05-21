@@ -18,7 +18,7 @@ fn main() {
     let mut topology = String::from("torus"); // Default value for --topology
     let mut test_path = String::from("tests/satlib/sat"); // Default value for --test_path
     let mut node_bandwidth = 100; // Default value for --node_bandwidth
-    let mut num_vars = 150; // Default value for --num_vars
+    let mut num_vars = 200; // Default value for --num_vars
 
     // Parse command-line arguments
     let mut i = 1;
