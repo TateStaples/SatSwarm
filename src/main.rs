@@ -13,6 +13,8 @@ mod structures;
 
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests --node_bandwidth 100 --num_vars 50
 fn main() {
+    structures::microsat::main();
+    exit(1);
     let args: Vec<String> = env::args().collect();
     let mut num_nodes: usize = 256; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
@@ -113,3 +115,21 @@ fn main() {
     println!("Done");
 }
 
+// #[cfg(test)]
+// mod tests {
+//     use microsat::dimacs_parser::parse_dimacs;
+//     use microsat::solver::solve;
+// 
+//     #[test]
+//     fn microsat_test() {
+//         println!("the very beginning");
+//         let path = "/Users/tatestaples/Code/SatSwarm/tests/satlib/sat/uf20-0100.cnf";
+//         let expression = parse_dimacs(path);
+//         println!("Expression {:?}", expression.num_active_clauses);
+//         println!("starting");
+//         let start_time = std::time::Instant::now();
+//         let result = solve(expression, false, false);
+//         println!("Time: {}", start_time.elapsed().as_secs_f64());
+//         assert!(result.is_none());
+//     }
+// }
