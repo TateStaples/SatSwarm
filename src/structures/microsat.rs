@@ -387,10 +387,7 @@ impl Expression {
         // println!("Clause: {}, Num clauses: {}, Num empty clauses: {}, Num active clauses: {}", clause_id, self.clauses.len(), self.num_empty_clauses, self.num_active_clauses);
         self.num_active_clauses -= 1;
         self.unit_clauses.remove(&clause_id);
-        self.actions
-            .write()
-            .unwrap()
-            .push(Action::RemoveClause(clause_id));
+        self.actions.push(Action::RemoveClause(clause_id));
     }
 
     /// Re-enables a clause that had been softly removed, so all of its literals are still present in the vector.
@@ -424,8 +421,8 @@ impl Expression {
             return;
         }
 
-        let actions = self.actions.clone();
-        let mut actions = actions;
+        // let actions = self.actions.clone();
+        let actions = &mut self.actions;
 
         actions.push(Action::RemoveLiteralFromClausesStart());
 
@@ -492,10 +489,7 @@ impl Expression {
         self.assignments.insert(variable, value); 
         // TODO: make this simpler considering we aren't doing multicore
         // Add to action history for potential future undoing
-        self.actions
-            .write()
-            .unwrap()
-            .push(Action::AssignVariable(variable));
+        self.actions.push(Action::AssignVariable(variable));
         let literal = if value {
             variable as Literal
         } else {
@@ -516,9 +510,7 @@ impl Expression {
 
     pub fn optimize(&mut self) {
         // Remove all of the empty clauses TODO: this comment isn't implemented
-        self.actions = Arc::new(RwLock::new(Stack::new(
-            self.clauses.len() * self.max_clause_length,
-        ))); // Pre-allocate a reasonable amount of space
+        self.actions = Vec::with_capacity(self.clauses.len() * self.max_clause_length); // Pre-allocate a reasonable amount of space
     }
 
     pub fn is_satisfied_by(&self, assignment: &Assignment) -> bool {
@@ -758,14 +750,15 @@ impl CNF for Expression {
     }
 
     fn get_action_state(&self) -> ActionState {
-        self.actions.read().unwrap().len()
+        self.actions.len()
     }
     
     fn restore_action_state(&mut self, state: ActionState) {
-        let actions = self.actions.clone();
-        let mut actions = actions.write().unwrap();
-        while actions.len() > state {
-            let action = actions.pop().unwrap();
+        // let actions = self.actions.clone();
+        while self.actions.len() > state {
+            // let action: Action;
+            // let actions = &mut self.actions;
+            let action = (&mut self.actions).pop().unwrap();
             match action {
                 Action::RemoveClause(clause_id) => self.enable_clause(clause_id),
                 Action::RemoveLiteralFromClausesEnd(literal) => {
@@ -775,7 +768,7 @@ impl CNF for Expression {
                     let mut should_exit = false;
 
                     while !should_exit {
-                        let next_action = actions.pop().unwrap();
+                        let next_action = (&mut self.actions).pop().unwrap();
                         match next_action {
                             Action::RemoveLiteralFromClause(clause_id) => {
                                 let clause =
