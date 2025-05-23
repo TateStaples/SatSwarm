@@ -184,7 +184,7 @@ pub fn parse_dimacs(filename: &str) -> Expression {
     // Read each line of the file
     for line in file.lines() {
         // If the line starts with 'c', then it is a comment, so skip it
-        if line.starts_with('c') || line.is_empty() {
+        if line.starts_with('c') || line.is_empty() || line.starts_with('%') {
             continue;
         }
 
@@ -990,5 +990,11 @@ mod tests {
         let result = solve(expression, false, false);
         println!("Time: {}", start_time.elapsed().as_secs_f64());
         assert!(result.is_none());
+    }
+    
+    #[test]
+    fn test_weird_dimacs() {
+        let path = "/Users/tatestaples/Code/SatSwarm/tests/satlib/unsat/uuf200-098.cnf";
+        parse_dimacs(path);
     }
 }
