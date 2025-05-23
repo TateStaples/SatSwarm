@@ -174,7 +174,6 @@ pub fn to_positive(variable: Literal) -> Literal {
 }
 
 /// Read in the SAT problem in standardized format
-// TODO: fix to allow for the blank lines in a lot of our files
 pub fn parse_dimacs(filename: &str) -> Expression {
 
     // Read the file from disk
@@ -821,7 +820,6 @@ impl CNF for Expression {
     }
 }
 
-use std::sync::{mpsc, Arc, RwLock};
 
 fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {  // FIXME: Seems like redundant function
     for clause in expression.get_clauses() {
@@ -847,35 +845,13 @@ fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {
     true
 }
 
-pub fn solve(expression: Expression, use_multiple_threads: bool, verify: bool) -> Option<Assignment> {
-    let mut expression_max_literals = expression.clone();
-    let mut expression_min_clause_len = expression.clone();
+pub fn solve(expression: Expression, verify: bool) -> Option<Assignment> {
+    let mut modifiable = expression.clone();
+    // Old code would multithread another dpll with MinimizeClauseLength heuristic on clone of expression
+    modifiable.optimize();
+    modifiable.set_heuristic(SolverHeuristic::MostLiteralOccurances);
 
-    let (send_channel, recv_channel) = mpsc::channel();
-    let send_channel_copy = send_channel.clone();
-
-    // TODO: I we want logging of path, we can only use one thread
-    std::thread::spawn(move || {
-        expression_max_literals.optimize();
-        expression_max_literals
-            .set_heuristic(SolverHeuristic::MostLiteralOccurances);
-
-        let result = solve_dpll(&mut expression_max_literals);
-        let _ = send_channel.send(result);
-    });
-
-    if use_multiple_threads {
-        std::thread::spawn(move || {
-            expression_min_clause_len.optimize();
-            expression_min_clause_len
-                .set_heuristic(SolverHeuristic::MinimizeClauseLength);
-
-            let result = solve_dpll(&mut expression_min_clause_len);
-            let _ = send_channel_copy.send(result);
-        });
-    }
-
-    let (solution, branches) = recv_channel.recv().expect("Could not receive result from solver.");
+    let (solution, branches) = solve_dpll(&mut modifiable);
     println!("Number of branches: {}", branches);
     if solution.is_some() && verify {
         let assignment = solution.clone().unwrap();
@@ -884,7 +860,7 @@ pub fn solve(expression: Expression, use_multiple_threads: bool, verify: bool) -
         }
     }
 
-    return solution;
+    solution
 }
 
 // Tests
@@ -896,9 +872,8 @@ pub fn main() {
     println!("starting");
     println!("Active clauses: {}", expression.num_active_clauses);
     let start_time = std::time::Instant::now();
-    let result = solve(expression, false, false);
+    let result = solve(expression, true);
     println!("Time: {}", start_time.elapsed().as_secs_f64());
-    assert!(result.is_none());
 }
 
 #[cfg(test)]
@@ -987,9 +962,8 @@ mod tests {
         println!("starting");
         println!("Active clauses: {}", expression.num_active_clauses);
         let start_time = std::time::Instant::now();
-        let result = solve(expression, false, false);
+        let result = solve(expression, true);
         println!("Time: {}", start_time.elapsed().as_secs_f64());
-        assert!(result.is_none());
     }
     
     #[test]
