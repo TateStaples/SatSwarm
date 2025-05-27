@@ -57,11 +57,11 @@ pub enum Action {
     AssignVariable(Variable),
 }
 /// The current value of each variable (I think they add both the pos and the neg to this)
-pub type Assignment = HashMap<Variable, bool, Hash>;  // TODO: Idk if this is ever used, more efficient if we don't 
+pub type Assignment = HashMap<Variable, bool, Hash>;  // TODO: Idk if this is ever used, more efficient if we don't
 /// The index of the clause is the Expression (2^16 = ~64k)
 pub type ClauseId = u16;
 /// Symbolic Literal where negative means negated (2^25 = ~16k unique symbols)
-pub type Literal = i16;  
+pub type Literal = i16;
 /// Variable name (I think because of _Literal_ they can only use 2^15)
 pub type Variable = u16;
 /// How far into the action stack 
