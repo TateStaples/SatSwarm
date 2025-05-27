@@ -35,7 +35,13 @@ Optimizations:
 - less variable search?
 */
 use std::cmp::{max, min, Ordering};
+use std::hash::{BuildHasherDefault, DefaultHasher};
 use hashbrown::{HashMap, HashSet};
+
+type Hash = BuildHasherDefault<DefaultHasher>;
+fn hashmap<A, T>() -> HashMap<A, T, Hash> {HashMap::with_hasher(BuildHasherDefault::new())}
+fn hashset<A>() -> HashSet<A, Hash> {HashSet::with_hasher(BuildHasherDefault::new())}
+fn assignment() -> Assignment {hashmap()}
 
 struct Trace {
     unit_props: ClauseId,
@@ -51,7 +57,7 @@ pub enum Action {
     AssignVariable(Variable),
 }
 /// The current value of each variable (I think they add both the pos and the neg to this)
-pub type Assignment = HashMap<Variable, bool>;  // TODO: Idk if this is ever used, more efficient if we don't 
+pub type Assignment = HashMap<Variable, bool, Hash>;  // TODO: Idk if this is ever used, more efficient if we don't 
 /// The index of the clause is the Expression (2^16 = ~64k)
 pub type ClauseId = u16;
 /// Symbolic Literal where negative means negated (2^25 = ~16k unique symbols)
@@ -214,6 +220,8 @@ pub fn parse_dimacs(filename: &str) -> Expression {
 
 
 pub fn solve_dpll(cnf: &mut Expression) -> (Option<Assignment>, u32) {
+    println!("Num assignment: {}, Num literals: {}, Num active clauses: {}", cnf.assignments.len(), cnf.literal_to_clause.len(), cnf.num_active_clauses);
+
     // Track where we are in the action stack
     let action_state: ActionState = cnf.get_action_state();
 
@@ -288,12 +296,12 @@ pub struct Expression {
     /// Action history (most recent at the top of the stack)
     actions: Vec<Action>,
     /// The final assignment values of each variable TODO: compare vec of optional bools vs HashMap
-    assignments: HashMap<Variable, bool>,
+    assignments: Assignment,
 
     /// Transposed problem listing where each variable occurs (note -1 and 1 are considered different variables)
-    literal_to_clause: HashMap<Literal, HashSet<ClauseId>>,
+    literal_to_clause: HashMap<Literal, HashSet<ClauseId, Hash>, Hash>,
     /// Currently identified unit_clauses TODO: this doesn't maintain ordering we would probably want from our unit clauses
-    unit_clauses: HashSet<ClauseId>,
+    unit_clauses: HashSet<ClauseId, Hash>,
     /// Literals (Var + assignment) that only have one polarity
     // pure_literals: HashSet<Literal>,
     /// Tracks when the problem is done
@@ -329,10 +337,10 @@ impl Expression {
             clauses: Vec::new(),
             variables: HashSet::new(),
             actions: Vec::new(),
-            assignments: HashMap::new(),
+            assignments: hashmap(),
 
-            literal_to_clause: HashMap::new(),
-            unit_clauses: HashSet::new(),
+            literal_to_clause: hashmap(),
+            unit_clauses: hashset(),
             // pure_literals: HashSet::new(),
             num_active_clauses: 0,
             num_empty_clauses: 0,
@@ -539,14 +547,13 @@ impl Expression {
         let mut max_occurrences = 0;
         let mut best_literal = 0;
 
-        for literal_clause in &self.literal_to_clause {
-            let literal = literal_clause.0;
-            if literal_clause.1.is_empty() || self.assignments.contains_key(&to_variable(*literal))
+        for (literal, clauses) in &self.literal_to_clause {
+            if clauses.is_empty() || self.assignments.contains_key(&to_variable(*literal))
             {
                 continue;
             }
 
-            let occurrences = literal_clause.1.len();
+            let occurrences = clauses.len();
             if occurrences > max_occurrences {
                 max_occurrences = occurrences;
                 best_literal = *literal;
@@ -665,12 +672,12 @@ impl CNF for Expression {
                 self.variables.insert(variable);
 
                 if !self.literal_to_clause.contains_key(literal) {
-                    self.literal_to_clause.insert(*literal, HashSet::new());
+                    self.literal_to_clause.insert(*literal, hashset());
                 }
 
                 if !self.literal_to_clause.contains_key(&negate(*literal)) {
                     self.literal_to_clause
-                        .insert(negate(*literal), HashSet::new());
+                        .insert(negate(*literal), hashset());
                 }
 
                 let literal_clauses = self.literal_to_clause.get_mut(literal).unwrap();
@@ -721,7 +728,7 @@ impl CNF for Expression {
 
     fn construct_assignment(&mut self) -> Assignment {
         // TODO: this can be more efficient
-        let mut assignments = HashMap::new();
+        let mut assignments = assignment();
 
         // Copy the existing assignments array to another one
         for (k, v) in self.assignments.iter() {
@@ -819,7 +826,6 @@ impl CNF for Expression {
     }
 }
 
-
 fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {  // FIXME: Seems like redundant function
     for clause in expression.get_clauses() {
         let mut satisfied = false;
@@ -887,7 +893,7 @@ mod tests {
         clause.insert_checked(-2);
         expression.add_clause(clause);
 
-        let mut assignment = Assignment::new();
+        let mut assignment = hashmap();
         assignment.insert(1, true);
         assignment.insert(2, false);
 
@@ -902,7 +908,7 @@ mod tests {
         clause.insert_checked(2);
         expression.add_clause(clause);
 
-        let mut assignment = Assignment::new();
+        let mut assignment = assignment();
         assignment.insert(1, false);
         assignment.insert(2, false);
 
@@ -922,7 +928,7 @@ mod tests {
         clause.insert_checked(-4);
         expression.add_clause(clause);
 
-        let mut assignment = Assignment::new();
+        let mut assignment = assignment();
         assignment.insert(1, false);
         assignment.insert(2, false);
         assignment.insert(3, true);
@@ -944,7 +950,7 @@ mod tests {
         clause.insert_checked(-4);
         expression.add_clause(clause);
 
-        let mut assignment = Assignment::new();
+        let mut assignment = assignment();
         assignment.insert(1, true);
         assignment.insert(2, false);
         assignment.insert(3, true);
