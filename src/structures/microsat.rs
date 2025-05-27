@@ -220,8 +220,8 @@ pub fn parse_dimacs(filename: &str) -> Expression {
 
 
 pub fn solve_dpll(cnf: &mut Expression) -> (Option<Assignment>, u32) {
-    println!("Num assignment: {}, Num literals: {}, Num active clauses: {}", cnf.assignments.len(), cnf.literal_to_clause.len(), cnf.num_active_clauses);
-
+    // println!("Num assignment: {}, Num literals: {}, Num active clauses: {}", cnf.assignments.len(), cnf.literal_to_clause.len(), cnf.num_active_clauses);
+    
     // Track where we are in the action stack
     let action_state: ActionState = cnf.get_action_state();
 
@@ -408,19 +408,21 @@ impl Expression {
             self.unit_clauses.insert(clause_id);
         }
 
-        // for i in 0..clause.len() {
-        //     let literal = unsafe { self.clauses.get_unchecked(clause_id as usize).get(i) };
-        //     let should_check_pure_literal;
-        //     {
-        //         let literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
-        //         literal_clauses.insert(clause_id);
-        //         should_check_pure_literal = literal_clauses.len() == 1;
-        //     }
+        for i in 0..clause.len() {
+            let literal = unsafe { self.clauses.get_unchecked(clause_id as usize).get(i) };
+            let literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
+            literal_clauses.insert(clause_id);
+            // let should_check_pure_literal;
+            // {
+                // let literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
+                // literal_clauses.insert(clause_id);
+                // should_check_pure_literal = literal_clauses.len() == 1;
+            // }
         // 
         //     if should_check_pure_literal {
         //         self.check_pure_literal(literal);
         //     }
-        // }
+        }
     }
 
     /// Removes a literal from all of the clauses that it is in
@@ -548,12 +550,17 @@ impl Expression {
         let mut best_literal = 0;
 
         for (literal, clauses) in &self.literal_to_clause {
-            if clauses.is_empty() || self.assignments.contains_key(&to_variable(*literal))
+            let occurrences = clauses.len();
+            // let weird_case = occurrences > 0 && self.assignments.contains_key(&to_variable(*literal));
+            // if weird_case {
+            //     println!("Literal: {}, occurences: {}", literal, occurrences);
+            //     assert!(false);
+            // }
+            // assert!(occurrences > 0 && self.assignments.contains_key(&to_variable(*literal)));
+            if self.assignments.contains_key(&to_variable(*literal))
             {
                 continue;
             }
-
-            let occurrences = clauses.len();
             if occurrences > max_occurrences {
                 max_occurrences = occurrences;
                 best_literal = *literal;
@@ -826,28 +833,8 @@ impl CNF for Expression {
     }
 }
 
-fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {  // FIXME: Seems like redundant function
-    for clause in expression.get_clauses() {
-        let mut satisfied = false;
-        for literal in clause.literals() {
-            let term = to_variable(*literal);
-            let sign = *literal > 0;
-
-            // The clause is satisfied as long as a literal's assignment matches its sign
-            // Aka, if the literal is positive, the assignment must be true
-            // If the literal is negative, the assignment must be false (making the literal true when it is negated)
-            if assignment[&term] == sign {
-                satisfied = true;
-                break;
-            }
-        }
-
-        if !satisfied {
-            return false;
-        }
-    }
-
-    true
+fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {  
+    expression.is_satisfied_by(assignment)
 }
 
 pub fn solve(expression: Expression, verify: bool) -> Option<Assignment> {
