@@ -859,7 +859,7 @@ pub fn solve(expression: Expression, verify: bool) -> Option<Assignment> {
 
 pub fn main() {
     println!("the very beginning");
-    let path = "/Users/tatestaples/Code/SatSwarm/tests/satlib/unsat/uuf250-099.cnf";
+    let path = "/Users/tatestaples/Code/SatSwarm/tests/satlib/unsat/uuf250-01.cnf";
     let expression = parse_dimacs(path);
     println!("starting");
     println!("Active clauses: {}", expression.num_active_clauses);
