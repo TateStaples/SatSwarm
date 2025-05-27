@@ -39,7 +39,8 @@ use hashbrown::{HashMap, HashSet};
 
 struct Trace {
     unit_props: ClauseId,
-    
+    // Some sparse memory traversal information
+    // Either left_child (usize/u32) or clause_idx (u16) of unsat +
 }
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum Action {
@@ -75,7 +76,7 @@ pub trait CNF {
     fn remove_unit_clause(&mut self) -> Option<ClauseId>;
 
     /// Removes a pure literal (if it exists) from the CNF and returns it.
-    fn remove_pure_literal(&mut self) -> Option<Literal>;
+    // fn remove_pure_literal(&mut self) -> Option<Literal>;
 
     /// Constructs an assignment from the current state of the CNF.
     /// This is only valid if the CNF is satisfiable.
@@ -218,9 +219,10 @@ pub fn solve_dpll(cnf: &mut Expression) -> (Option<Assignment>, u32) {
 
     // Try to do as much inference as we can before branching
     while cnf.is_inference_possible() {
+        // FIXME: feel like it may be more efficient to test for failure on assignment
         // Next, remove all of the unit clauses
         while cnf.remove_unit_clause().is_some() {
-            // TODO: count these
+            // TODO: count these for the log
         }
 
         // If the CNF is satisfied, then we are done
@@ -231,7 +233,7 @@ pub fn solve_dpll(cnf: &mut Expression) -> (Option<Assignment>, u32) {
             return (None, 0);
         }
 
-        while cnf.remove_pure_literal().is_some() {}
+        // while cnf.remove_pure_literal().is_some() {}
     }
 
     if cnf.is_satisfied() {
@@ -273,8 +275,8 @@ pub fn solve_dpll(cnf: &mut Expression) -> (Option<Assignment>, u32) {
 
 #[derive(Clone, Copy, Debug)]
 pub enum SolverHeuristic {
-    MostLiteralOccurances,
-    MostVariableOccurances,
+    MostLiteralOccurrences,
+    MostVariableOccurrences,
     MinimizeClauseLength,
 }
 /// SAT problem
@@ -283,7 +285,7 @@ pub struct Expression {
     clauses: Vec<Clause>,
     /// Variables
     variables: HashSet<Variable>,
-    /// Thread-safe action stack. TODO: if we're not doing multiple threads, remove
+    /// Action history (most recent at the top of the stack)
     actions: Vec<Action>,
     /// The final assignment values of each variable TODO: compare vec of optional bools vs HashMap
     assignments: HashMap<Variable, bool>,
@@ -292,8 +294,8 @@ pub struct Expression {
     literal_to_clause: HashMap<Literal, HashSet<ClauseId>>,
     /// Currently identified unit_clauses TODO: this doesn't maintain ordering we would probably want from our unit clauses
     unit_clauses: HashSet<ClauseId>,
-    /// TODO: idk how this differe from unit_clauses
-    pure_literals: HashSet<Literal>,
+    /// Literals (Var + assignment) that only have one polarity
+    // pure_literals: HashSet<Literal>,
     /// Tracks when the problem is done
     pub num_active_clauses: u16,
     /// Tracks how much left of the problem (presumable active + empty is constant)
@@ -331,11 +333,11 @@ impl Expression {
 
             literal_to_clause: HashMap::new(),
             unit_clauses: HashSet::new(),
-            pure_literals: HashSet::new(),
+            // pure_literals: HashSet::new(),
             num_active_clauses: 0,
             num_empty_clauses: 0,
             max_clause_length: 0,
-            heuristic: SolverHeuristic::MostLiteralOccurances,
+            heuristic: SolverHeuristic::MostLiteralOccurrences,
         }
     }
 
@@ -362,7 +364,7 @@ impl Expression {
 
     /// Softly removes a clause from the expression.
     /// This means that the clause is not actually removed from the expression vector,
-    /// but all references to it have been removed from the literals map, so it is unreferenced.
+    /// but all references to it have been removed from the literal map, so it is unreferenced.
     fn remove_clause(&mut self, clause_id: ClauseId) {
         // Remove all of the literals in the clause from the variable_to_clause map
         for i in 0..self.clauses[clause_id as usize].len() {
@@ -371,17 +373,17 @@ impl Expression {
             literal_clauses.remove(&clause_id);
             // If there are no more clauses that contain the literal, the negation is a pure literal
             // TODO: remove the pure literal stuff
-            if literal_clauses.is_empty() {
-                // This literal has no more instances.
-                // If its negation has some number of instances, add it to the pure_literals set.
-                let negated_literal = negate(literal);
-                let negated_literal_clauses = self.literal_to_clause.get_mut(&negated_literal);
-
-                if negated_literal_clauses.is_none() || negated_literal_clauses.unwrap().is_empty()
-                {
-                    self.pure_literals.insert(negated_literal);
-                }
-            }
+            // if literal_clauses.is_empty() {
+            //     // This literal has no more instances.
+            //     // If its negation has some number of instances, add it to the pure_literals set.
+            //     let negated_literal = negate(literal);
+            //     let negated_literal_clauses = self.literal_to_clause.get_mut(&negated_literal);
+            // 
+            //     if negated_literal_clauses.is_none() || negated_literal_clauses.unwrap().is_empty()
+            //     {
+            //         self.pure_literals.insert(negated_literal);
+            //     }
+            // }
         }
         // println!("Clause: {}, Num clauses: {}, Num empty clauses: {}, Num active clauses: {}", clause_id, self.clauses.len(), self.num_empty_clauses, self.num_active_clauses);
         self.num_active_clauses -= 1;
@@ -398,19 +400,19 @@ impl Expression {
             self.unit_clauses.insert(clause_id);
         }
 
-        for i in 0..clause.len() {
-            let literal = unsafe { self.clauses.get_unchecked(clause_id as usize).get(i) };
-            let should_check_pure_literal;
-            {
-                let literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
-                literal_clauses.insert(clause_id);
-                should_check_pure_literal = literal_clauses.len() == 1;
-            }
-
-            if should_check_pure_literal {
-                self.check_pure_literal(literal);
-            }
-        }
+        // for i in 0..clause.len() {
+        //     let literal = unsafe { self.clauses.get_unchecked(clause_id as usize).get(i) };
+        //     let should_check_pure_literal;
+        //     {
+        //         let literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
+        //         literal_clauses.insert(clause_id);
+        //         should_check_pure_literal = literal_clauses.len() == 1;
+        //     }
+        // 
+        //     if should_check_pure_literal {
+        //         self.check_pure_literal(literal);
+        //     }
+        // }
     }
 
     /// Removes a literal from all of the clauses that it is in
@@ -422,7 +424,6 @@ impl Expression {
 
         // let actions = self.actions.clone();
         let actions = &mut self.actions;
-
         actions.push(Action::RemoveLiteralFromClausesStart());
 
         let literal_clauses = clauses_result.unwrap();
@@ -462,31 +463,30 @@ impl Expression {
         }
     }
 
-    fn check_pure_literal(&mut self, literal: Literal) {
-        let negated_literal = negate(literal);
-        let literal_clauses = self.literal_to_clause.get(&literal);
-        let has_instances = literal_clauses.is_some() && !literal_clauses.unwrap().is_empty();
-
-        let negated_literal_clauses = self.literal_to_clause.get(&negated_literal);
-        let negated_has_instances =
-            negated_literal_clauses.is_some() && !negated_literal_clauses.unwrap().is_empty();
-
-        if has_instances && !negated_has_instances {
-            self.pure_literals.insert(literal);
-            self.pure_literals.remove(&negated_literal);
-        } else if !has_instances && negated_has_instances {
-            self.pure_literals.insert(negated_literal);
-            self.pure_literals.remove(&literal);
-        } else {
-            self.pure_literals.remove(&literal);
-            self.pure_literals.remove(&negated_literal);
-        }
-    }
+    // fn check_pure_literal(&mut self, literal: Literal) {
+    //     let negated_literal = negate(literal);
+    //     let literal_clauses = self.literal_to_clause.get(&literal);
+    //     let has_instances = literal_clauses.is_some() && !literal_clauses.unwrap().is_empty();
+    // 
+    //     let negated_literal_clauses = self.literal_to_clause.get(&negated_literal);
+    //     let negated_has_instances =
+    //         negated_literal_clauses.is_some() && !negated_literal_clauses.unwrap().is_empty();
+    // 
+    //     if has_instances && !negated_has_instances {
+    //         self.pure_literals.insert(literal);
+    //         self.pure_literals.remove(&negated_literal);
+    //     } else if !has_instances && negated_has_instances {
+    //         self.pure_literals.insert(negated_literal);
+    //         self.pure_literals.remove(&literal);
+    //     } else {
+    //         self.pure_literals.remove(&literal);
+    //         self.pure_literals.remove(&negated_literal);
+    //     }
+    // }
 
     fn assign_variable(&mut self, variable: Variable, value: bool) {
         // println!("Assigning variable {} to {}", variable, value);
-        self.assignments.insert(variable, value); 
-        // TODO: make this simpler considering we aren't doing multicore
+        self.assignments.insert(variable, value);
         // Add to action history for potential future undoing
         self.actions.push(Action::AssignVariable(variable));
         let literal = if value {
@@ -497,10 +497,9 @@ impl Expression {
         let negated_literal = negate(literal);
         self.remove_clauses_with_literal(literal);  // Remove Trues
         self.remove_literal_from_clauses(negated_literal);  // Shrink Falses
-
-        // TODO: what is this?
-        self.pure_literals.remove(&literal);
-        self.pure_literals.remove(&negated_literal);
+        
+        // self.pure_literals.remove(&literal);
+        // self.pure_literals.remove(&negated_literal);
     }
 
     fn unassign_variable(&mut self, variable: Variable) {
@@ -536,8 +535,8 @@ impl Expression {
         true
     }
 
-    fn get_most_literal_occurances(&self) -> (Variable, bool) {
-        let mut max_occurances = 0;
+    fn get_most_literal_occurrences(&self) -> (Variable, bool) {
+        let mut max_occurrences = 0;
         let mut best_literal = 0;
 
         for literal_clause in &self.literal_to_clause {
@@ -547,9 +546,9 @@ impl Expression {
                 continue;
             }
 
-            let occurances = literal_clause.1.len();
-            if occurances > max_occurances {
-                max_occurances = occurances;
+            let occurrences = literal_clause.1.len();
+            if occurrences > max_occurrences {
+                max_occurrences = occurrences;
                 best_literal = *literal;
             }
         }
@@ -561,8 +560,8 @@ impl Expression {
         panic!("No branch variable found");
     }
 
-    fn get_most_variable_occurances(&self) -> (Variable, bool) {
-        let mut max_occurances = 0;
+    fn get_most_variable_occurrences(&self) -> (Variable, bool) {
+        let mut max_occurrences = 0;
         let mut best_variable = 0;
 
         for variable in &self.variables {
@@ -573,12 +572,12 @@ impl Expression {
                 continue;
             }
 
-            let positive_occurances = self.literal_to_clause.get(&positive_literal).unwrap().len();
-            let negative_occurances = self.literal_to_clause.get(&negative_literal).unwrap().len();
+            let positive_occurrences = self.literal_to_clause.get(&positive_literal).unwrap().len();
+            let negative_occurrences = self.literal_to_clause.get(&negative_literal).unwrap().len();
 
-            let occurances = positive_occurances + negative_occurances;
-            if occurances > max_occurances {
-                max_occurances = occurances;
+            let occurrences = positive_occurrences + negative_occurrences;
+            if occurrences > max_occurrences {
+                max_occurrences = occurrences;
                 best_variable = *variable;
             }
         }
@@ -678,7 +677,7 @@ impl CNF for Expression {
                 literal_clauses.insert(clause_id);
             }
             // Check if the literal is a pure literal
-            self.check_pure_literal(*literal);
+            // self.check_pure_literal(*literal);
         }
 
         // Make sure we add it if it is a unit clause
@@ -709,16 +708,16 @@ impl CNF for Expression {
         Some(clause_id)
     }
 
-    fn remove_pure_literal(&mut self) -> Option<Literal> {
-        if self.pure_literals.is_empty() {
-            return None;
-        }
-
-        let literal: Literal = *self.pure_literals.iter().next().unwrap();
-
-        self.assign_variable(to_variable(literal), literal > 0);
-        Some(literal)
-    }
+    // fn remove_pure_literal(&mut self) -> Option<Literal> {
+    //     if self.pure_literals.is_empty() {
+    //         return None;
+    //     }
+    // 
+    //     let literal: Literal = *self.pure_literals.iter().next().unwrap();
+    // 
+    //     self.assign_variable(to_variable(literal), literal > 0);
+    //     Some(literal)
+    // }
 
     fn construct_assignment(&mut self) -> Assignment {
         // TODO: this can be more efficient
@@ -759,15 +758,14 @@ impl CNF for Expression {
             // let actions = &mut self.actions;
             let action = (&mut self.actions).pop().unwrap();
             match action {
-                Action::RemoveClause(clause_id) => self.enable_clause(clause_id),
-                Action::RemoveLiteralFromClausesEnd(literal) => {
-                    let removing_literal_clauses =
-                        self.literal_to_clause.get_mut(&literal).unwrap();
+                Action::RemoveClause(clause_id) => self.enable_clause(clause_id),  // Removed when one of the variables is set to true
+                Action::RemoveLiteralFromClausesEnd(literal) => {  // gonna now have a series of literal removals
+                    let removing_literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
 
                     let mut should_exit = false;
 
                     while !should_exit {
-                        let next_action = (&mut self.actions).pop().unwrap();
+                        let next_action = (&mut self.actions).pop().expect("Did not encounter a start literal!");
                         match next_action {
                             Action::RemoveLiteralFromClause(clause_id) => {
                                 let clause =
@@ -797,18 +795,19 @@ impl CNF for Expression {
         }
     }
 
-    /// Inference is possibly when there are some "Active" clauses,
+    /// Inference is possibly when there are some "Active" clauses
     /// and either pure literals or unit clauses.
     fn is_inference_possible(&self) -> bool {  // TODO: figure out this expression
         self.num_empty_clauses == 0
-            && self.num_active_clauses > 0
-            && (!self.pure_literals.is_empty() || !self.unit_clauses.is_empty())
+            && self.num_active_clauses > 0  // Not SAT
+            // && (!self.pure_literals.is_empty() || !self.unit_clauses.is_empty())  // Something to infer
+            && !self.unit_clauses.is_empty()
     }
     fn get_branch_variable(&self) -> (Variable, bool) {
         // TODO: either be able to implement one of these in hardware or add the lazy in
         match self.heuristic {
-            SolverHeuristic::MostLiteralOccurances => self.get_most_literal_occurances(),
-            SolverHeuristic::MostVariableOccurances => self.get_most_variable_occurances(),
+            SolverHeuristic::MostLiteralOccurrences => self.get_most_literal_occurrences(),
+            SolverHeuristic::MostVariableOccurrences => self.get_most_variable_occurrences(),
             SolverHeuristic::MinimizeClauseLength => {
                 self.get_lexicographically_maximizing_literal()
             }
@@ -849,7 +848,7 @@ pub fn solve(expression: Expression, verify: bool) -> Option<Assignment> {
     let mut modifiable = expression.clone();
     // Old code would multithread another dpll with MinimizeClauseLength heuristic on clone of expression
     modifiable.optimize();
-    modifiable.set_heuristic(SolverHeuristic::MostLiteralOccurances);
+    modifiable.set_heuristic(SolverHeuristic::MostLiteralOccurrences);
 
     let (solution, branches) = solve_dpll(&mut modifiable);
     println!("Number of branches: {}", branches);
