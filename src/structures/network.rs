@@ -198,7 +198,7 @@ impl Network {
                         let node = self.arena.get_node_mut(id);
                         assert!(&fork.fork_time > &node.local_time, "Fork received before done!");
                         node.receive_fork(fork);
-                        self.results.cycles_busy += node.local_time - local_time;
+                        self.results.cycles_busy += node.local_time - local_time;  // FIXME: this is wrong
                     } else {    // become sleepy as no neighbors have anything at this time
                         let neighbors = self.arena.get_neighbors(id);
                         let min_neighbor_time = neighbors.iter().map(|n| self.arena.get_node(*n).local_time).min().unwrap();

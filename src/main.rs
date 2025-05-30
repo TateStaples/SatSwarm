@@ -7,20 +7,25 @@ use std::fs::OpenOptions;
 use std::process::exit;
 use structures::minisat::minisat_table;
 use structures::{clause_table::ClauseTable, network::Network};
+use crate::structures::{microsat, testing};
 use crate::structures::testing::{parse_topology, run_workload, TestConfig};
 
 mod structures;
 
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests --node_bandwidth 100 --num_vars 50
 fn main() {
-    structures::microsat::main();
-    exit(1);
+    // microsat::main();
+    // exit(1);
+    
     let args: Vec<String> = env::args().collect();
     let mut num_nodes: usize = 256; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
-    let mut test_path = String::from("tests/satlib/sat"); // Default value for --test_path
+    let mut test_path = String::from("tests/satlib/unsat"); // Default value for --test_path
     let mut node_bandwidth = 100; // Default value for --node_bandwidth
     let mut num_vars = 200; // Default value for --num_vars
+
+    testing::gen_traces(test_path.clone(), 125);
+    exit(1);
 
     // Parse command-line arguments
     let mut i = 1;

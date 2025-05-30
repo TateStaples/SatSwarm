@@ -5,6 +5,7 @@ use std::time::Duration;
 use csv::Writer;
 use std::fs::OpenOptions;
 use crate::structures::clause_table::ClauseTable;
+use crate::structures::microsat;
 use crate::structures::minisat::minisat_table;
 use crate::structures::network::Network;
 use crate::structures::util_types::Time;
@@ -104,6 +105,19 @@ pub fn get_test_files(test_path: &str) -> Option<Vec<std::path::PathBuf>> {
     Some(files)
 }
 
+pub fn gen_traces(test_path: String, variables: i32) {
+    if let Some(files) = get_test_files(&test_path) {
+        for file in files.into_iter() {
+            let name = file.file_name().unwrap().to_str().unwrap().to_string();
+            let pattern = format!("uf{}", variables);
+            if name.contains(pattern.as_str()) {
+                microsat::build_trace_path(file)
+            }
+        }
+    } else { 
+        println!("No test files found.");
+    }
+}
 /// Entry point for running a SAT problem in the simulator
 pub fn run_workload(test_path: String, config: TestConfig) {
     // load test files from the specified path
