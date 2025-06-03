@@ -1,3 +1,0 @@
-Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth,Number of Variables
-tests/selected/uf20-0852.cnf,true,30042,true,40,49,47,4,"Torus(2, 2)",100,20
-tests/selected/uf20-0852.cnf,true,37959,true,40,49,47,4,"Torus(2, 2)",100,20

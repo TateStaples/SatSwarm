@@ -1,5 +1,0 @@
-Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth
-tests/random/unsat/dummy_unsat.cnf,false,3041,false,5,5,0,1,"Grid(1, 1)",1000000
-tests/random/unsat/51_10_0.cnf,false,6792,false,81,81,0,1,"Grid(1, 1)",1000000
-tests/random/unsat/51_10_1.cnf,false,3583,false,33,33,0,1,"Grid(1, 1)",1000000
-tests/random/unsat/51_10_2.cnf,false,3458,false,41,41,0,1,"Grid(1, 1)",1000000

@@ -5,4 +5,4 @@ pub mod network;
 pub mod testing;
 pub mod util_types;
 pub mod microsat;
-mod trace;
+pub mod trace;

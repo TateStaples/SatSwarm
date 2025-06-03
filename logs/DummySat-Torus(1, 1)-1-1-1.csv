@@ -1,2 +1,0 @@
-Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth,Number of Variables
-/Users/shaanyadav/Desktop/Projects/SatSwarm/tests/satlib/unsat/dummy_unsat.cnf,false,3791,false,10,10,0,1,"Torus(1, 1)",1,1

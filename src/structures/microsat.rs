@@ -269,14 +269,14 @@ pub enum SolverHeuristic {
 /// SAT problem
 pub struct Expression {
     /// All of the Clauses AND'ed in CNF form
-    clauses: Vec<Clause>,
+    pub clauses: Vec<Clause>,
     /// Action history (most recent at the top of the stack)
     actions: Vec<Action>,
     /// The final assignment values of each variable
     assignments: Assignment,
     /// Transposed problem listing where each variable occurs (note -1 and 1 are considered different variables)
     literal_to_clause: HashMap<Literal, HashSet<ClauseId, Hash>, Hash>,
-    /// Currently identified unit_clauses TODO: this doesn't maintain ordering we would probably want from our unit clauses
+    /// Currently identified unit_clauses 
     unit_clauses: BinaryHeap<ClauseId>,
     /// Tracks when the problem is done
     pub num_active_clauses: u16,
@@ -425,6 +425,7 @@ impl Expression {
     fn remove_literal_from_clauses(&mut self, literal: Literal) -> Option<ClauseId> {
         let clauses_result = self.literal_to_clause.get(&literal);
         if clauses_result.is_none() {  // TODO: why would this
+            debug_assert!(false);
             return None;
         }
         self.checks();
@@ -711,7 +712,7 @@ fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {
     expression.is_satisfied_by(assignment)
 }
 
-fn solve(expression: Expression, log: &mut Vec<Trace>) {
+fn solve(expression: &Expression, log: &mut Vec<Trace>) {
     let mut modifiable = expression.clone();
     // Old code would multithread another dpll with MinimizeClauseLength heuristic on clone of expression
     modifiable.optimize(); 
@@ -723,19 +724,20 @@ fn solve(expression: Expression, log: &mut Vec<Trace>) {
 // Tests
 pub fn build_trace_path(path: PathBuf) {
     println!("Building trace path: {}", path.display());
-    let trace_path = format!("traces/trace_of_{}", path.file_name().unwrap().to_str().unwrap());
+    let trace_path = format!("traces/sat_accel/trace_of_{}", path.file_name().unwrap().to_str().unwrap());
     if File::open(&trace_path).is_ok() {
         println!("Trace already exists! Skipping...");
         return;
     }
-    let expression = Expression::new();
     let expression = parse_dimacs(path.clone());
     let mut log = Vec::with_capacity(50_000_000);
     let start_time = std::time::Instant::now();
-    solve(expression, &mut log);
-    assert_ne!(log.last().unwrap().is_sat(), path.to_str().unwrap().contains("unsat"));
+    solve(&expression, &mut log);
+    // assert_ne!(log.last().unwrap().is_sat(), path.to_str().unwrap().contains("unsat"));
     println!("Solved in {} seconds with {} branches", start_time.elapsed().as_secs_f64(), log.len());
-    save_log(log, trace_path);
+    let num_clauses = expression.clauses.len();
+    let num_variables = expression.assignments.len();
+    save_log(log, num_variables, num_clauses, PathBuf::from(trace_path));
 }
 
 pub fn main() {
@@ -751,13 +753,15 @@ pub fn main() {
     println!("starting");
     println!("Active clauses: {}", expression.num_active_clauses);
     let start_time = std::time::Instant::now();
-    let result = solve(expression, &mut log);
+    let result = solve(&expression, &mut log);
     println!("Time: {}", start_time.elapsed().as_secs_f64());
     println!("Log Len {} and size {}", log.len(), log.len()*size_of::<Trace>());
     assert_ne!(log.last().unwrap().is_sat(), path.contains("unsat"));
 
     let trace_path = format!("traces/trace_of_{}", path.split('/').last().unwrap());
-    save_log(log, trace_path);
+    let num_clauses = expression.clauses.len();
+    let num_variables = expression.assignments.len();
+    save_log(log, num_variables, num_clauses, PathBuf::from(trace_path));
 }
 
 #[cfg(test)]

@@ -1,5 +1,0 @@
-Test Path,Expected Result,Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
-tests/random/sat/91_20_2.cnf,true,true,58194,3649536,74880,64,1,"Grid(8, 8)",1000000
-tests/random/sat/91_20_2.cnf,true,true,58194,3649536,74880,64,1,"Grid(8, 8)",1000000
-tests/random/sat/91_20_3.cnf,true,true,1415300,59951393,30627807,64,1,"Grid(8, 8)",1000000
-tests/random/sat/91_20_1.cnf,true,true,477346,23534379,7015765,64,1,"Grid(8, 8)",1000000

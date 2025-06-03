@@ -1,10 +1,10 @@
 use std::cmp::{PartialEq, Reverse};
 use std::collections::{BinaryHeap, HashMap};
 use std::process::exit;
-use crate::{structures::clause_table::{TermState}, TestConfig};
+use crate::{structures::clause_table::{TermState}};
 use crate::structures::clause_table::ProblemState;
 use crate::structures::node::{AssignmentCause, Fork, NodeState, VariableAssignment};
-use crate::structures::testing::{TestResult, Topology};
+use crate::structures::testing::{ArchitectureDescription, TestResult, Topology};
 use crate::structures::util_types::Time;
 use super::{clause_table::ClauseTable, node::Node, util_types::{NodeId, VarId, DEBUG_PRINT}};
 
@@ -74,11 +74,11 @@ impl Network {
     }
 
     /// Returns a topology of nodes with connections in the form specified
-    pub fn generate(clause_table: ClauseTable, config: &TestConfig) -> Network {
+    pub fn generate(clause_table: ClauseTable, config: &ArchitectureDescription) -> Network {
         let mut swarm = match config.topology {
-            Topology::Grid(rows, cols) => Network::grid(clause_table, rows, cols, config.node_bandwidth),
-            Topology::Torus(rows, cols) => Network::torus(clause_table, rows, cols, config.node_bandwidth),
-            Topology::Dense(num_nodes) => Network::dense(clause_table, num_nodes, config.node_bandwidth),
+            Topology::Grid(rows, cols) => Network::grid(clause_table, rows, cols, todo!()),
+            Topology::Torus(rows, cols) => Network::torus(clause_table, rows, cols, todo!()),
+            Topology::Dense(num_nodes) => Network::dense(clause_table, num_nodes, todo!()),
         };
         // swarm.messages.set_bandwidth(config.node_bandwidth);
         swarm

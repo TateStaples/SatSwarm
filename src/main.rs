@@ -7,20 +7,29 @@ use std::fs::OpenOptions;
 use std::process::exit;
 use structures::minisat::minisat_table;
 use structures::{clause_table::ClauseTable, network::Network};
-use crate::structures::{microsat, testing};
-use crate::structures::testing::{parse_topology, run_workload, TestConfig};
+use crate::structures::{microsat, testing, trace};
+use crate::structures::testing::{parse_topology, run_workload, ArchitectureDescription, Topology};
+use crate::structures::testing::Topology::Torus;
 
 mod structures;
 
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests --node_bandwidth 100 --num_vars 50
 fn main() {
-    // microsat::main();
-    // exit(1);
+    let arch = ArchitectureDescription {
+        topology: Torus(20, 20),
+        decision_delay: 0,
+        fork_delay: 1,
+        clause_per_eval: 1,
+        cycles_per_eval: 1,
+    };
+    trace::test_traces(String::from("traces/sat_accel"), arch);
+    // testing::gen_traces(String::from("tests/sat_accel"), 125);
+    exit(1);
     
     let args: Vec<String> = env::args().collect();
     let mut num_nodes: usize = 256; // Default value for --num_nodes
     let mut topology = String::from("torus"); // Default value for --topology
-    let mut test_path = String::from("tests/satlib/unsat"); // Default value for --test_path
+    let mut test_path = String::from("tests/sat_accel"); // Default value for --test_path
     let mut node_bandwidth = 100; // Default value for --node_bandwidth
     let mut num_vars = 200; // Default value for --num_vars
 
@@ -108,14 +117,8 @@ fn main() {
     println!("Topology: {}", topology);
     println!("Test path: {}", test_path);
 
-    let config = TestConfig::new(
-        num_nodes,
-        parse_topology(&topology, num_nodes),
-        node_bandwidth,
-        num_vars,
-        test_path.clone(),
-    );
-    run_workload(test_path, config);
+    let config = todo!();
+    run_workload(test_path, config, Some(num_vars));
 
     println!("Done");
 }

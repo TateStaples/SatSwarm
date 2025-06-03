@@ -1,5 +1,0 @@
-Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Table Bandwidth,Topology,Node Bandwidth
-tests/eval_set/unsat_51100.cnf,false,25458,false,14656,232004,2492,16,1,"Torus(4, 4)",1000000
-tests/eval_set/51_10_0.cnf,true,9125,true,1483,21841,1887,16,1,"Torus(4, 4)",1000000
-tests/eval_set/51_10_1.cnf,true,7542,true,2115,31953,1887,16,1,"Torus(4, 4)",1000000
-tests/eval_set/51_10_2.cnf,true,6709,true,1651,24529,1887,16,1,"Torus(4, 4)",1000000
