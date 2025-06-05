@@ -96,7 +96,7 @@ impl TestLog {
         let now = chrono::Local::now();
         let log_path = format!(
             "logs/{}.csv",
-            now.format("%Y-%m-%d,%H:%M")
+            now.format("%Y-%m-%d@%H:%M")
         );
         if Path::new(&log_path).exists() {
             eprintln!("Configuration with name '{}' already exists. Exiting to avoid overwriting logs.", log_path);
