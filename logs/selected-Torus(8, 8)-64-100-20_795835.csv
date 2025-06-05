@@ -1,0 +1,4 @@
+Test Path,Expected Result,Minisat Speed (ns),Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Num Nodes,Topology,Node Bandwidth,Number of Variables
+/Users/shaanyadav/Desktop/Projects/SatSwarm/tests/selected/uf20-02.cnf,true,24750,true,41,969,2166,64,"Torus(8, 8)",100,20
+/Users/shaanyadav/Desktop/Projects/SatSwarm/tests/selected/uf20-03.cnf,true,16458,true,45,968,2334,64,"Torus(8, 8)",100,20
+/Users/shaanyadav/Desktop/Projects/SatSwarm/tests/selected/uf20-01.cnf,true,16833,true,43,925,2207,64,"Torus(8, 8)",100,20
