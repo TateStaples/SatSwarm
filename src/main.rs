@@ -16,10 +16,10 @@ mod structures;
 // example command: cargo run -- --num_nodes 64 --topology grid --test_path /Users/shaanyadav/Desktop/Projects/SatSwarm/src/tests --node_bandwidth 100 --num_vars 50
 fn main() {
     let arch = ArchitectureDescription {
-        topology: Torus(20, 20),
+        topology: Torus(10, 10),
         decision_delay: 0,
         fork_delay: 1,
-        clause_per_eval: 1,
+        clause_per_eval: 100,
         cycles_per_eval: 1,
     };
     trace::test_traces(String::from("traces/sat_accel"), arch);

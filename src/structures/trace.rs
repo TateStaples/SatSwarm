@@ -15,7 +15,7 @@ use crate::structures::util_types::{NodeId, Time};
 
 const BINARY_CONFIG: Configuration = config::standard();
 
-#[derive(Encode, Decode)]
+#[derive(Encode, Decode, Clone)]
 pub struct Trace {
     // data: u64  // 8 bytes per Trace
     unit_props: u16,
@@ -25,6 +25,7 @@ pub struct Trace {
 #[derive(Debug, Clone)]
 struct TraceNode {
     branches: Vec<(TraceId, Time, TraceId)>,
+    trail: Vec<bool>,
     local_time: Time,
     state: NodeState,
     id: NodeId,
@@ -33,6 +34,7 @@ impl TraceNode {
     pub fn new(id: NodeId) -> Self {
         Self {
             branches: Vec::new(),
+            trail: Vec::new(),
             local_time: 0,
             state: NodeState::Idle,
             id,
@@ -167,7 +169,7 @@ impl TraceArena {
         }
         arena
     }
-    
+
     pub fn get_node(&self, id: NodeId) -> &TraceNode { self.nodes.get(id).expect("Node not found") }
     pub fn get_node_mut(&mut self, id: NodeId) -> &mut TraceNode { self.nodes.get_mut(id).expect("Node not found") }
     pub fn get_node_opt(&self, id: NodeId) -> Option<&TraceNode> { self.nodes.get(id) }
@@ -192,6 +194,7 @@ impl TraceArena {
 }
 struct TraceFork {
     fork_time: Time,
+    trail: Vec<bool>,
     new_branch: TraceId,
 }
 pub fn test_traces(test_path: String, config: ArchitectureDescription) {
@@ -202,9 +205,14 @@ pub fn test_traces(test_path: String, config: ArchitectureDescription) {
             println!("Running test: {:?}", trace_file.clone());
             let test_name = trace_file.file_stem().unwrap().to_str().unwrap()
                     .split("trace_of_").last().unwrap().to_string();
-            let (num_vars, num_clauses, mut log) = load_log(trace_file);
+            let (num_vars, num_clauses, mut log) = load_log(trace_file.clone());
+            let initial_log_len = log.len();
             let source_path = get_test_files("tests").unwrap().into_iter().filter(|x| x.file_name().unwrap().to_str().unwrap().contains(&test_name)).last().unwrap();
-            let cnf = parse_dimacs(source_path);
+            println!("Source path: {:?}", source_path);
+            let mut cnf = parse_dimacs(source_path);
+            cnf.optimize();
+            let num_vars = cnf.num_vars(); let num_clauses = cnf.num_clauses();
+            debug_assert!(cnf.clauses.iter().filter(|clause| clause.enabled).all(|x| !x.variables.is_empty()));
             let problem_description = ProblemDescription {
                 num_vars,
                 num_clauses,
@@ -213,6 +221,11 @@ pub fn test_traces(test_path: String, config: ArchitectureDescription) {
             let start_time = std::time::Instant::now();
             let test_result = run(arena.clone(), &mut log, cnf, config.clone());
             println!("Test took {} s", start_time.elapsed().as_secs_f64());
+            if log.len() > initial_log_len {
+                assert!(test_result.simulated_result);
+                println!("Log length increased! {}->{}", initial_log_len, log.len());
+                save_log(log.clone(), num_vars, num_clauses, trace_file);
+            }
             let test_log = TestLog {
                 problem_description,
                 config: config.clone(),
@@ -225,10 +238,11 @@ pub fn test_traces(test_path: String, config: ArchitectureDescription) {
     } else {
         println!("No test files found.");
     }
-    
+
 }
 fn run(mut arena: TraceArena, log: &mut Vec<Trace>, cnf: Expression, config: ArchitectureDescription) -> TestResult {
-    let initial_log_len = log.len();
+    println!("Running with size {}", log.len());
+    debug_assert!(cnf.clauses.iter().filter(|clause| clause.enabled).all(|x| !x.variables.is_empty()));
     let num_clauses = cnf.clauses.len();
     // Initialization
     let mut results = TestResult {
@@ -248,9 +262,11 @@ fn run(mut arena: TraceArena, log: &mut Vec<Trace>, cnf: Expression, config: Arc
     fn propagate(node: &mut TraceNode, id: TraceId, log: &Vec<Trace>, config: &ArchitectureDescription, num_clauses: usize) {
         debug_assert!(id < log.len());
         let trace = &log[id];
-        node.local_time += config.decision_delay + div_up(num_clauses as Time, config.clause_per_eval as Time) * (config.cycles_per_eval as Time) * (trace.unit_props as Time); 
+        node.local_time += config.decision_delay + div_up(num_clauses as Time, config.clause_per_eval as Time) * (config.cycles_per_eval as Time) * (trace.unit_props as Time);
         if trace.is_branch() {
+            debug_assert!(id >= node.branches.last().map(|x|x.0).unwrap_or(0));
             node.branches.push((id, node.local_time, trace.right_child as usize));
+            node.trail.push(false);
             propagate(node, id + 1, log, config, num_clauses);  // left branch
         } else if trace.is_sat() {
             node.state = NodeState::SAT;
@@ -264,11 +280,16 @@ fn run(mut arena: TraceArena, log: &mut Vec<Trace>, cnf: Expression, config: Arc
     let retry = |node: &mut TraceNode, log: &mut Vec<Trace>| {
         debug_assert!(node.state == NodeState::Busy);
         while let Some((source_id, branch_time, mut branch_id)) = node.branches.pop() {
+            node.trail.pop();
             if branch_id == 1 { continue; }  // stolen work
-            if branch_id == 0 {  // Uncompleted
+            if branch_id == 0 {  // Uncompleted (should very rarely happen
                 branch_id = log.len();
-                // TODO: need to edit the log (so need to store where in the log this comes from)
-                microsat::solve_dpll(&mut cnf.clone(), log);
+                log[source_id].right_child = branch_id as u32;
+                node.trail.push(true);
+                let mut now = cnf.clone();
+                // NOTE: this isn't thoroughly tested because it is a rare case
+                now.follow_trail(&node.trail);
+                now.dpll(log);
             }
             node.local_time += div_up(num_clauses as Time, config.clause_per_eval as Time) * (config.cycles_per_eval as Time);
             propagate(node, branch_id, log, &config, num_clauses);
@@ -278,12 +299,14 @@ fn run(mut arena: TraceArena, log: &mut Vec<Trace>, cnf: Expression, config: Arc
         node.state = NodeState::Idle;
     };
 
-    let receive_fork = |node: &mut TraceNode, fork: TraceFork| {
+    let receive_fork = |node: &mut TraceNode, fork: TraceFork, log: &Vec<Trace>| {
         debug_assert!(node.branches.is_empty());
-        let TraceFork { fork_time, new_branch } = fork;
+        let TraceFork { fork_time, new_branch, trail } = fork;
         debug_assert!(fork_time > node.local_time);
         debug_assert!(new_branch > 1);
+        node.trail = trail;
         node.local_time = fork_time;
+        node.branches.clear();
         node.state = NodeState::Busy;
         propagate(node, new_branch, log, &config, num_clauses);
     };
@@ -325,13 +348,22 @@ fn run(mut arena: TraceArena, log: &mut Vec<Trace>, cnf: Expression, config: Arc
             let (_, _, partner_branch) = &mut neighbor.branches[best_idx];
             *partner_branch = 1;  // mark as stolen
             let fork_time = time + config.fork_delay;
+            let trail_idx = best_idx+neighbor.trail.len()-neighbor.branches.len();
+            let mut new_trail = neighbor.trail[..trail_idx].to_vec();
+            new_trail.push(!neighbor.trail[trail_idx]);
             if new_branch == 0 {
                 new_branch = log.len();
                 log[source_id].right_child = new_branch as u32;
-                microsat::solve_dpll(&mut cnf.clone(), log);
+                let mut now = cnf.clone();
+                now.follow_trail(&new_trail);
+                print!("Expanding trace on {:?}...", new_trail);
+                now.dpll(log);
+                println!(" Done.");
+                assert!(log.len() < u32::MAX as usize);
             }
             Some(TraceFork {
                 new_branch,
+                trail: new_trail,
                 fork_time,
             })
         } else {
@@ -364,10 +396,10 @@ fn run(mut arena: TraceArena, log: &mut Vec<Trace>, cnf: Expression, config: Arc
                 if let Some(fork) = create_fork(&mut arena, id, local_time, log) {
                     results.cycles_idle += fork.fork_time - local_time;
                     let node = arena.get_node_mut(id);
-                    assert!(&fork.fork_time > &node.local_time, "Fork received before done!");
+                    debug_assert!(&fork.fork_time > &node.local_time, "Fork received before done!");
                     let fork_time = fork.fork_time;
-                    receive_fork(node, fork);
-                    results.cycles_busy += node.local_time - fork_time;  
+                    receive_fork(node, fork, log);
+                    results.cycles_busy += node.local_time - fork_time;
                 } else {    // become sleepy as no neighbors have anything at this time
                     let neighbors = arena.get_neighbors(id);
                     let min_neighbor_time = neighbors.iter().map(|n| arena.get_node(*n).local_time).min().unwrap();

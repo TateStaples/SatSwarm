@@ -1,37 +1,3 @@
-/*
-# :microscope: microsat
-
-A tiny (_microscopic_) DPLL SAT-solver written in Rust. This is not meant to be:
-
-1. A particularly _fast_ solver
-2. A particularly _extensible_ solver
-3. A particularly _useful_ solver
-https://github.com/RobScheidegger/microsat/blob/main/README.md
-But instead serves as a proof-of-concept for what a small, readable, and understandable [DPLL](https://en.wikipedia.org/wiki/DPLL_algorithm) SAT Solver could look like in Rust.
-
-This project originated as a project for Brown's [CSCI2951-O Foundations of Prescriptive Analysis](https://cs.brown.edu/courses/csci2951-o/).
-
-Authors:
-
-- [Rob Scheidegger ](https://github.com/RobScheidegger)
-- [Hammad Izhar](https://github.com/Hammad-Izhar)
-
-## Benchmarks
-
-Although `microsat` isn't intended to be used as a fast SAT-solver, I felt it appropriate to compare it at a basic level to the project, [`minisat`](https://github.com/niklasso/minisat) (a small [CDCL](https://en.wikipedia.org/wiki/Conflict-driven_clause_learning) SAT solver that disrupted the SAT solver scene many years back). Times were for release-compiled variants of `microsat` and `minisat` on the same computer, for all of the examples in `examples/cnf`:
-
-|| `microsat`  | `minisat`  |
-|---|---|---|
-|Time to solve example suite| 44.158s  |  41.432s |
-|Lines of code| 791  | 3517 |
-
-As you can see, `microsat` does pretty remarkably well in this benchmark, despite being _much_ smaller than the already small `minisat`. Further, it is important to note that for any reasonably large instance (e.g. larger than the `1040` variable, `3668` clause file in `examples/cnf`, which is the largest in this benchmark), so in a way, this benchmark is clearly cheating (but fascinating regardless).
-*/
-
-/*
-Optimizations:
-- SIMD
-*/
 use std::cmp::{max, min, Ordering};
 use std::collections::BinaryHeap;
 use std::fmt::{format, Debug, Display, Formatter};
@@ -43,7 +9,7 @@ use hashbrown::{HashMap, HashSet, DefaultHashBuilder};
 use bincode::{config, Decode, Encode};
 use bincode::config::Configuration;
 use crate::structures::trace::{save_log, Trace};
-
+// TODO: SIMD?
 type Hash = DefaultHashBuilder;
 fn hashmap<A, T>() -> HashMap<A, T, Hash> {HashMap::with_hasher(Default::default())}
 fn hashset<A>() -> HashSet<A, Hash> {HashSet::with_hasher(Default::default())}
@@ -187,77 +153,6 @@ pub fn parse_dimacs(path: PathBuf) -> Expression {
 }
 
 pub type TraceId = usize;
-pub fn solve_dpll(cnf: &mut Expression, log: &mut Vec<Trace>) {
-    // Track where we are in the action stace
-    debug_assert!(cnf.clauses.iter().all(|clause| clause.len()>0));
-    debug_assert_eq!(cnf.clauses.iter().filter(|clause| clause.enabled).count(), cnf.num_active_clauses as usize);
-    cnf.checks();
-    // Try to do as much inference as we can before branching
-    while let Some(unit_prop) = cnf.pop_unit_clause() {
-        if let Some(unsat_clause) = cnf.remove_unit_clause(unit_prop) {
-            cnf.unit_clauses.clear();
-            let unit_props = cnf.backtrack();
-            let trace = Trace::unsat(unit_props, unsat_clause);
-            log.push(trace);
-            return;
-        }
-    }
-    cnf.checks();
-    if cnf.is_satisfied() {
-        let trace = Trace::sat(cnf.backtrack());
-        log.push(trace);
-        println!("SAT!");
-        debug_assert!(log.last().unwrap().is_sat());
-        return;
-    }
-    debug_assert!(cnf.assignments.iter().any(|x| x.is_none()));
-    debug_assert!(cnf.unit_clauses.is_empty());
-
-    // Have to BRANCH!
-    let mut placeholder = Trace::placeholder();
-    let my_trace_idx = log.len();
-    log.push(placeholder);
-    
-    // Pick some variable to branch on ("guess") to keep searching
-    let (branch_variable, branch_value) = cnf.get_branch_variable();
-
-    // Try the first branch value (don't track idx because always immediately after current
-    if let Some(unsat_clause) = cnf.branch_variable(branch_variable, branch_value) {
-        let unit_props = cnf.backtrack();
-        let left_trace = Trace::unsat(unit_props, unsat_clause);
-        log.push(left_trace);
-    } else {
-        solve_dpll(cnf, log);
-        if log.last().unwrap().is_sat() {
-            let unit_props = cnf.backtrack();
-            let my_trace = unsafe{log.get_unchecked_mut(my_trace_idx)};
-            *my_trace = Trace::branch(unit_props, 0);
-            return;
-        }
-    }  // by this point the trace after my_trace should be left_trace either explicit or recursive
-    debug_assert!(log.len() > my_trace_idx);
-    debug_assert_eq!(cnf.clauses.iter().filter(|clause| clause.enabled).count(), cnf.num_active_clauses as usize);
-
-    // Try the other branch value
-    let right_trace_idx = if let Some(unsat_clause) = cnf.branch_variable(branch_variable, !branch_value) {
-        let unit_props = cnf.backtrack();
-        let right_trace = Trace::unsat(unit_props, unsat_clause);
-        let right_trace_idx = log.len();
-        log.push(right_trace);
-        right_trace_idx
-    } else {
-        let right_trace_idx = log.len();
-        solve_dpll(cnf, log);
-        right_trace_idx
-    };
-    debug_assert!(log.len() >= right_trace_idx && right_trace_idx > my_trace_idx+1);
-    debug_assert_eq!(cnf.clauses.iter().filter(|clause| clause.enabled).count(), cnf.num_active_clauses as usize);
-
-    let unit_props = cnf.backtrack();
-    let my_trace = unsafe{log.get_unchecked_mut(my_trace_idx)};
-    *my_trace = Trace::branch(unit_props, right_trace_idx);
-}
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum SolverHeuristic {
@@ -298,6 +193,7 @@ impl Clone for Expression {
 }
 
 impl Expression {
+    // ----- Constructors ----- //
     pub fn new() -> Expression {
         Expression {
             clauses: Vec::new(),
@@ -311,7 +207,6 @@ impl Expression {
             heuristic: SolverHeuristic::FirstVariable,
         }
     }
-
     pub fn from_clauses(clauses: Vec<Clause>) -> Expression {
         let mut expression = Expression::new();
         for clause in clauses {
@@ -320,12 +215,14 @@ impl Expression {
 
         expression
     }
-
     pub fn from_cnf_file(file_name: &str) -> Expression {
         let path: PathBuf = PathBuf::from(file_name);
         parse_dimacs(path)
     }
 
+    // ----- Getters ----- //
+    pub fn num_vars(&self) -> usize {self.assignments.len()}
+    pub fn num_clauses(&self) -> usize {self.clauses.len()}
     fn get_clauses(&self) -> Vec<Clause> {
         self.clauses.clone()
     }
@@ -350,12 +247,65 @@ impl Expression {
             clauses.get_unchecked_mut(clause_id as usize)
         }
     }
+    #[inline]
+    fn get_variable(&self, variable: Variable) -> &Option<bool> {
+        // self.assignments[variable - 1]
+        debug_assert!(self.assignments[variable-1].or(Some(true)).is_some());
+        unsafe {
+            self.assignments.get_unchecked(variable-1)
+        }
+    }
+    #[inline]
+    fn get_literal(&self, literal: Literal) -> Option<bool> {
+        match self.get_variable(to_variable(literal)) {
+            Some(b) => Some(*b == (literal>0)),
+            None => None,
+        }
+    }
+    #[inline]
+    fn set_variable(&mut self, variable: Variable, value: bool) {
+        // self.assignments[variable-1] = Some(value);
+        debug_assert!(self.assignments[variable-1].is_none());
+        unsafe {
+            *self.assignments.get_unchecked_mut(variable-1) = Some(value);
+        }
+    }
+
+    fn get_most_literal_occurrences(&self) -> (Variable, bool) { unimplemented!() }
+
+    fn get_most_variable_occurrences(&self) -> (Variable, bool) { unimplemented!() }
+
+    #[inline]
+    fn checks(&self) {
+        // debug_assert!({  // clause 2 literal implies literal in each of the clauses (or clz disabled)
+        //     let mut result = true;
+        //     for (lit, clauses) in &self.literal_to_clause {
+        //         if self.get_literal(*lit).is_some() {
+        //             continue;
+        //         }
+        //         for clause_id in clauses {
+        //             let clause = &self.clauses[*clause_id as usize];
+        //             if !clause.enabled || !clause.variables.contains(lit) {
+        //                 println!("Break 2");
+        //                 result = false;
+        //                 break;
+        //             }
+        //         }
+        //         if !result { break; }
+        //     }
+        //     result
+        // });
+        debug_assert_eq!(self.clauses.iter().filter(|clause| clause.enabled).count(), self.num_active_clauses as usize);
+        // debug_assert!(self.clauses.iter().filter(|x|x.enabled).all(|cl| 
+        //     cl.variables.iter().all(|l| self.get_literal(*l).is_none())  // only unassigned variables should still appear
+        // ));
+        // debug_assert!(self.clauses.iter().all(|clause| !clause.is_empty())); //this is equiv to unsat
+    }
 
     /// Softly removes a clause from the expression.
     /// This means that the clause is not actually removed from the expression vector,
     /// but all references to it have been removed from the literal map, so it is unreferenced.
     fn remove_clause(&mut self, clause_id: ClauseId) {
-        self.checks();
         // Remove all of the literals in the clause from the variable_to_clause map
         let clause = Self::get_mut_clause(&mut self.clauses, clause_id);
         debug_assert!(clause.enabled);
@@ -366,9 +316,9 @@ impl Expression {
             let literal_clauses = self.literal_to_clause.get_mut(&literal).unwrap();
             literal_clauses.remove(&clause_id);
         }
-        self.checks();
         self.unit_clauses.retain(|x|x != &clause_id);  // TODO: this is inefficient
         self.actions.push(Action::RemoveClause(clause_id));
+        self.checks();
     }
 
     /// Re-enables a clause that had been softly removed, so all of its literals are still present in the vector.
@@ -383,42 +333,7 @@ impl Expression {
             let literal_clauses = literal_to_clause.get_mut(&literal).unwrap();
             literal_clauses.insert(clause_id);
         }
-        // if clause.len() == 1 {
-        //     // unit_clauses.add(clause_id.clone());
-        //     unit_clauses.push(clause_id);
-        // }
-    }
-    #[inline]
-    fn checks(&self) {
-        debug_assert!({
-            let mut result = true;
-            for (lit, clauses) in &self.literal_to_clause {
-                if self.get_literal(*lit).is_some() {
-                    // result = true;
-                    // break;
-                    continue;
-                }
-                for clause_id in clauses {
-                    let clause = &self.clauses[*clause_id as usize];
-                    if !clause.enabled || !clause.variables.contains(lit) {
-                        println!("Break 2");
-                        result = false;
-                        break;
-                    }
-                }
-                if !result { break; }
-            }
-            result
-            // self.literal_to_clause.iter().all(|(lit, clauses)| {
-            //     clauses.iter()
-            //         .map(|id| &self.clauses[*id as usize])
-            //         .all(|c| c.enabled
-            //             && c.variables.contains(&lit))
-            //         || self.assignments[to_variable(*lit)].is_some()
-            // })
-        });
-        debug_assert_eq!(self.clauses.iter().filter(|clause| clause.enabled).count(), self.num_active_clauses as usize);
-        debug_assert!(self.clauses.iter().all(|clause| !clause.is_empty()));
+        self.checks();
     }
 
     /// Removes a literal from all of the clauses that it is in
@@ -428,7 +343,6 @@ impl Expression {
             debug_assert!(false);
             return None;
         }
-        self.checks();
         let actions = &mut self.actions;
         actions.push(Action::RemoveLiteralFromClausesStart());
 
@@ -442,7 +356,6 @@ impl Expression {
                 clause.variables.push(literal);
                 actions.pop();
                 actions.push(Action::RemoveLiteralFromClausesEnd(literal));
-                self.checks();
                 return Some(*clause_id);
             }
 
@@ -451,13 +364,11 @@ impl Expression {
             }
         }
         actions.push(Action::RemoveLiteralFromClausesEnd(literal));
-        self.checks();
         return None;
     }
 
     /// Removes all clauses with the specified literal.
     fn remove_clauses_with_literal(&mut self, literal: Literal) {
-        self.checks();
         let literal_clauses;
         {
             let literal_clauses_ref = self.literal_to_clause.get(&literal);
@@ -466,14 +377,12 @@ impl Expression {
             }
             literal_clauses = literal_clauses_ref.unwrap().clone();
         }
-        self.checks();
         for clause_id in literal_clauses {
             self.remove_clause(clause_id);
         }
     }
 
     fn assign_variable(&mut self, variable: Variable, value: bool, spec: bool) -> Option<ClauseId> {
-        self.checks();
         self.set_variable(variable, value);
         // Add to action history for potential future undoing
         let action = if spec {Action::SpeculateVariable(variable)} else { Action::AssignVariable(variable) };
@@ -487,10 +396,8 @@ impl Expression {
         if let Some(unsat_clause) = self.remove_literal_from_clauses(negated_literal) {
             return Some(unsat_clause);
         }
-        self.checks();
 
         self.remove_clauses_with_literal(literal);  // Remove Trues
-        self.checks();
         return None;
     }
 
@@ -555,35 +462,7 @@ impl Expression {
 
         true
     }
-
-    #[inline]
-    fn get_variable(&self, variable: Variable) -> &Option<bool> {
-        // self.assignments[variable - 1]
-        debug_assert!(self.assignments[variable-1].or(Some(true)).is_some());
-        unsafe {
-            self.assignments.get_unchecked(variable-1)
-        }
-    }
-    #[inline]
-    fn get_literal(&self, literal: Literal) -> Option<bool> {
-        match self.get_variable(to_variable(literal)) {
-            Some(b) => Some(*b == (literal>0)),
-            None => None,
-        }
-    }
-    #[inline]
-    fn set_variable(&mut self, variable: Variable, value: bool) {
-        // self.assignments[variable-1] = Some(value);
-        debug_assert!(self.assignments[variable-1].is_none());
-        unsafe {
-            *self.assignments.get_unchecked_mut(variable-1) = Some(value);
-        }
-    }
-
-    fn get_most_literal_occurrences(&self) -> (Variable, bool) { unimplemented!() }
-
-    fn get_most_variable_occurrences(&self) -> (Variable, bool) { unimplemented!() }
-
+    
     fn add_clause(&mut self, clause: Clause) {
         let clause_id = self.clauses.len() as ClauseId;
 
@@ -633,7 +512,6 @@ impl Expression {
         self.unit_clauses.pop()
     }
     fn remove_unit_clause(&mut self, clause_id: ClauseId) -> Option<ClauseId> {
-        self.checks();
         let literal = self.find_literal(clause_id, 0);
         self.assign_variable(to_variable(literal), literal > 0, false)
     }
@@ -646,8 +524,7 @@ impl Expression {
     fn is_satisfied(&self) -> bool {
         self.num_active_clauses == 0
     }
-    
-
+    /// Undo the action stack until the last speculative branch. Return number of assignments back
     fn backtrack(&mut self) -> u16 {
         debug_assert_eq!(self.clauses.iter().filter(|clause| clause.enabled).count(), self.num_active_clauses as usize);
         self.unit_clauses.clear();
@@ -682,16 +559,14 @@ impl Expression {
                 }
                 Action::SpeculateVariable(variable) => {
                     self.unassign_variable(variable);
-                    self.checks();
                     return unit_prop_count;
                 }
                 _ => unreachable!(),  // was break but i don't see how you should get here
             }
         }
-        self.checks();
         unit_prop_count
     }
-    
+    /// Figure out which speculative assignment to do
     fn get_branch_variable(&self) -> (Variable, bool) {
         match self.heuristic {
             SolverHeuristic::FirstVariable => (self.assignments.iter().position(|x| x.is_none()).unwrap() + 1, false),
@@ -702,14 +577,103 @@ impl Expression {
             }
         }
     }
-
+    /// Perform a branch (same as assigning a speculative variable)
+    #[inline]
     fn branch_variable(&mut self, variable: Variable, value: bool) -> Option<ClauseId> {
         self.assign_variable(variable, value, true)
     }
-}
+    
+    pub fn dpll(&mut self, log: &mut Vec<Trace>) {
+        self.checks();
+        // Try to do as much inference as we can before branching
+        let unsat = self.run_unit_props(log);
+        if unsat { return; }
+        self.checks();
+        debug_assert!(self.unit_clauses.is_empty());
+        if self.is_satisfied() {
+            let trace = Trace::sat(self.backtrack());
+            log.push(trace);
+            // println!("SAT!");
+            debug_assert!(log.last().unwrap().is_sat());
+            return;
+        }
+        debug_assert!(self.clauses.iter().filter(|x| x.enabled).all(|x| !x.variables.is_empty()));
+        self.checks();
+        if self.assignments.iter().all(|x| x.is_some()) {
+            let enabled = self.clauses.iter().filter(|clause| clause.enabled).collect::<Vec<_>>();
+            println!("{:?}", self.assignments);
+        }
+        debug_assert!(self.assignments.iter().any(|x| x.is_none()));
+        // Have to BRANCH!
+        let mut placeholder = Trace::placeholder();
+        let my_trace_idx = log.len();
+        log.push(placeholder);
 
-fn verify_assignment(expression: &Expression, assignment: &Assignment) -> bool {  
-    expression.is_satisfied_by(assignment)
+        // Pick some variable to branch on ("guess") to keep searching
+        let (branch_variable, branch_value) = self.get_branch_variable();
+        debug_assert!(self.get_variable(branch_variable).is_none());
+
+        // Try the first branch value (don't track idx because always immediately after current
+        if let Some(unsat_clause) = self.branch_variable(branch_variable, branch_value) {
+            let unit_props = self.backtrack();
+            let left_trace = Trace::unsat(unit_props, unsat_clause);
+            log.push(left_trace);
+        } else {
+            debug_assert!(self.get_variable(branch_variable).is_some());
+            self.dpll(log);
+            if log.last().unwrap().is_sat() {
+                let unit_props = self.backtrack();
+                let my_trace = unsafe { log.get_unchecked_mut(my_trace_idx) };
+                *my_trace = Trace::branch(unit_props, 0);
+                return;
+            }
+        }  // by this point the trace after my_trace should be left_trace either explicit or recursive
+        debug_assert!(log.len() > my_trace_idx);
+
+        // Try the other branch value
+        let right_trace_idx = if let Some(unsat_clause) = self.branch_variable(branch_variable, !branch_value) {
+            let unit_props = self.backtrack();
+            let right_trace = Trace::unsat(unit_props, unsat_clause);
+            let right_trace_idx = log.len();
+            log.push(right_trace);
+            right_trace_idx
+        } else {
+            let right_trace_idx = log.len();
+            self.dpll(log);
+            right_trace_idx
+        };
+        debug_assert!(log.len() >= right_trace_idx && right_trace_idx > my_trace_idx + 1);
+
+        let unit_props = self.backtrack();
+        let my_trace = unsafe { log.get_unchecked_mut(my_trace_idx) };
+        *my_trace = Trace::branch(unit_props, right_trace_idx);
+    }
+    
+    fn run_unit_props(&mut self, log: &mut Vec<Trace>) -> bool {
+        while let Some(unit_prop) = self.pop_unit_clause() {
+            if let Some(unsat_clause) = self.remove_unit_clause(unit_prop) {
+                self.unit_clauses.clear();
+                let unit_props = self.backtrack();
+                let trace = Trace::unsat(unit_props, unsat_clause);
+                log.push(trace);
+                
+                return true;
+            }
+        }
+        false
+    }
+    
+    pub(crate) fn follow_trail(&mut self, trail: &Vec<bool>) {
+        debug_assert!(self.clauses.iter().filter(|clause| clause.enabled).all(|x| !x.variables.is_empty()));
+        for side in trail {
+            let unsat = self.run_unit_props(&mut Vec::new());
+            debug_assert!(!unsat);
+            let (branch_variable, branch_value) = self.get_branch_variable();
+            let x = self.branch_variable(branch_variable, *side);
+            debug_assert!(x.is_none());
+        }
+        debug_assert!(self.clauses.iter().filter(|clause| clause.enabled).all(|x| !x.variables.is_empty()));
+    }
 }
 
 fn solve(expression: &Expression, log: &mut Vec<Trace>) {
@@ -718,7 +682,7 @@ fn solve(expression: &Expression, log: &mut Vec<Trace>) {
     modifiable.optimize(); 
     modifiable.set_heuristic(SolverHeuristic::FirstVariable);
     debug_assert!(modifiable.clauses.iter().all(|c| c.len()>0));
-    solve_dpll(&mut modifiable, log);
+    modifiable.dpll(log)
 }
 
 // Tests
