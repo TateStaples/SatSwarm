@@ -1,0 +1,9 @@
+Test Path,Number of Variables,Number of Clauses,Topology,Decision Delay,Fork Delay,Clause Per Eval,Cycles Per Eval,Simulated Result,Simulated Cycles,Cycles Busy,Cycles Idle,Expected Result,Minisat Speed (ns)
+CBS_k3_n100_m403_b10_1,100,403,"Torus(10, 10)",0,1,100,1,true,2030,191557,11443,false,0
+hole9,90,415,"Torus(10, 10)",0,1,100,1,false,12040425,185292066,1018750384,false,0
+hole8,72,297,"Torus(10, 10)",0,1,100,1,false,586538,8580122,50073626,false,0
+uf125-01,125,538,"Torus(10, 10)",0,1,100,1,true,6117,604875,6825,false,0
+uuf100-02,100,430,"Torus(10, 10)",0,1,100,1,false,22115,1202677,1008763,false,0
+hole7,56,204,"Torus(10, 10)",0,1,100,1,false,53007,718235,4582414,false,0
+uf150-08,150,645,"Torus(10, 10)",0,1,100,1,true,2097313,194001215,15730085,false,0
+uuf125-05,125,538,"Torus(10, 10)",0,1,100,1,false,2197386,104220168,115518382,false,0
