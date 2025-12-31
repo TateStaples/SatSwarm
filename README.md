@@ -122,6 +122,24 @@ The simulator tracks several performance metrics:
   - `message.rs`: Message passing system
   - `minisat.rs`: MiniSat solver integration
   - `util_types.rs`: Common type definitions
+- `hardware/`
+  - `node.sv`: SystemVerilog implementation of node
+  - `node_tb.sv`: Comprehensive testbench with benchmarking
+  - `run_benchmark.sh`: Automated benchmark runner
+  - `SYSTEMVERILOG_README.md`: Complete SystemVerilog usage guide
+  - `COMPARISON.md`: Verilog vs SystemVerilog comparison
+  - `IMPLEMENTATION_SUMMARY.md`: Implementation overview and results
+
+## Hardware Implementation
+
+A SystemVerilog implementation of the node is available in the `hardware/` directory with:
+- Modern SystemVerilog features (logic types, enums, assertions)
+- Built-in performance monitoring counters
+- Comprehensive testbench with 9 test scenarios
+- Automated benchmarking infrastructure
+- Peak utilization: 88.24%
+
+See [hardware/SYSTEMVERILOG_README.md](hardware/SYSTEMVERILOG_README.md) for details.
 
 ## Testing
 
@@ -130,3 +148,9 @@ The simulator includes a testing framework that:
 - Compares results with MiniSat solver
 - Generates performance logs
 - Validates solution correctness
+
+Hardware verification:
+- SystemVerilog testbench with automated pass/fail checking
+- Performance metrics collection (cycles, utilization)
+- Waveform generation for debugging
+- Run with: `cd hardware && ./run_benchmark.sh`
