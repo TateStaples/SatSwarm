@@ -38,15 +38,18 @@ run_test() {
             ;;
             
         "verilator")
-            # Compile with Verilator (if available)
-            verilator --cc --exe --build -j 0 -Wall $verilog_files --trace
+            # Note: Verilator requires a C++ testbench wrapper
+            # This is a simplified command - for full Verilator support,
+            # you would need to create a C++ driver file
+            echo "NOTE: Verilator support requires additional C++ wrapper"
+            echo "Using Icarus Verilog instead..."
+            # Fallback to iverilog
+            iverilog -g2012 -o "${OUTPUT_DIR}/node_test" $verilog_files
             if [ $? -ne 0 ]; then
-                echo "ERROR: Verilator compilation failed for $test_name"
+                echo "ERROR: Compilation failed for $test_name"
                 return 1
             fi
-            
-            # Run simulation
-            ./obj_dir/Vnode_tb | tee -a "$RESULT_FILE"
+            vvp "${OUTPUT_DIR}/node_test" | tee -a "$RESULT_FILE"
             ;;
             
         *)

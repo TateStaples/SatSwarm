@@ -302,12 +302,14 @@ module node_tb;
         $display("\n--- Test 9: Throughput Test ---");
         reset_dut();
         start_perf_measurement();
-        for (int v = 0; v < 10; v++) begin
+        begin
             logic [MASK_WIDTH-1:0] mask_val;
-            mask_val = (v % 8);
-            send_fork(v);
-            repeat(MAX_CLAUSES) begin
-                send_substitution(mask_val);
+            for (int v = 0; v < 10; v++) begin
+                mask_val = (v % 8);
+                send_fork(v);
+                repeat(MAX_CLAUSES) begin
+                    send_substitution(mask_val);
+                end
             end
         end
         wait_idle(500);

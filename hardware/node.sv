@@ -86,7 +86,8 @@ module node #(
             else
                 idle_counter <= idle_counter + 1;
             
-            case (current_state)
+            // Use next_state for state-dependent logic to maintain clear separation
+            case (next_state)
                 IDLE: begin
                     node_busy <= 1'b0;
                     if (incoming_var_valid && incoming_msg_type == MSG_FORK) begin
@@ -130,7 +131,6 @@ module node #(
                 
                 default: begin
                     // Should never reach here
-                    current_state <= IDLE;
                 end
             endcase
         end
